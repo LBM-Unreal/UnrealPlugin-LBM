@@ -6,6 +6,8 @@ class SIMULATIONCORE_API FSimulationShaderResource : public FRenderResource
 public:
 	FRWBufferStructured InputBuffer;  // RWStructuredBuffer<float> InputBuffer;
 	FRWBufferStructured OutputBuffer; // RWStructuredBuffer<float> OutputBuffer;
+	FTextureRHIRef OutputTexture;
+	FUnorderedAccessViewRHIRef OutputTextureUAV;
 
 	virtual void InitRHI(FRHICommandListBase& RHICmdList) override;
 
@@ -13,7 +15,9 @@ public:
 
 	static FSimulationShaderResource* Get(); 
 private:
-	FSimulationShaderResource() {}
+	FSimulationShaderResource()
+	{
+	}
 };
 
 void SIMULATIONCORE_API DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, float Scale, float Translate, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);

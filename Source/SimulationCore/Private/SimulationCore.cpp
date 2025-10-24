@@ -5,8 +5,9 @@
 BEGIN_SHADER_PARAMETER_STRUCT(FSimulationCoreShaderParameters, )
 	SHADER_PARAMETER(float, Scale)
 	SHADER_PARAMETER(float, Translate)
-	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, InputBuffer)  
-	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, OutputBuffer) 
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, InputBuffer)
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, OutputBuffer)
+	SHADER_PARAMETER_UAV(RWTexture2D<float4>, OutputTexture)
 END_SHADER_PARAMETER_STRUCT()
 
 
@@ -36,6 +37,7 @@ FSimulationShaderResource* FSimulationShaderResource::Get()
 			{
 				GInstance->InitResource(RHICmdList);
 			});
+		FlushRenderingCommands();
 	}
 	return GInstance;
 }
@@ -43,8 +45,18 @@ FSimulationShaderResource* FSimulationShaderResource::Get()
 // Buffer初始化函数
 void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 {
+	FRHITextureCreateDesc Desc =
+		FRHITextureCreateDesc::Create2D(TEXT("LBM_Textures"), 256, 256, PF_A32B32G32R32F)
+		.SetFlags(ETextureCreateFlags::UAV).SetClearValue(FClearValueBinding(FLinearColor(4294967295.f, 0.f, 0.f, 0.f)));
 	InputBuffer.Initialize(RHICmdList, TEXT("InputBuffer"), sizeof(float), 1);
 	OutputBuffer.Initialize(RHICmdList, TEXT("OutputBuffer"), sizeof(float), 1);
+	OutputTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTexture")));
+	FRHIViewDesc ViewDesc;
+	
+	OutputTextureUAV = RHICmdList.CreateUnorderedAccessView(OutputTexture, FRHIViewDesc::CreateTextureUAV()
+		.SetDimensionFromTexture(OutputTexture)
+		.SetMipLevel(0)
+		.SetArrayRange(0, 1));
 }
 
 // Buffer释放函数
@@ -68,6 +80,7 @@ void DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSim
 		// 设置buffer类型
 		Parameters.InputBuffer = Resource->InputBuffer.UAV;
 		Parameters.OutputBuffer = Resource->OutputBuffer.UAV;
+		Parameters.OutputTexture = Resource->OutputTextureUAV;
 
 		// 传入参数
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
@@ -85,15 +98,17 @@ void DispatchExampleComputeShader_GameThread(float InputVal, float Scale, float 
 {
 	// 加入RenderThread任务
 	ENQUEUE_RENDER_COMMAND(FDispatchExampleComputeShader)([Resource, InputVal, Scale, Translate](FRHICommandListImmediate& RHICmdList)
-		{
-			// LockBuffer并写入数据
-			float* InputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(Resource->InputBuffer.Buffer, 0, sizeof(float), RLM_WriteOnly));
-			*InputGPUBuffer = InputVal; // 可以使用FMemory::Memcpy
-			// UnlockBuffer
-			RHICmdList.UnlockBuffer(Resource->InputBuffer.Buffer);
-			// 调用RenderThread版本的函数
-			DispatchExampleComputeShader_RenderThread(RHICmdList, Resource, Scale, Translate, 1, 1, 1);
-		});
+	{
+		// LockBuffer并写入数据
+		float* InputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(Resource->InputBuffer.Buffer, 0, sizeof(float), RLM_WriteOnly));
+		*InputGPUBuffer = InputVal; // 可以使用FMemory::Memcpy
+		// UnlockBuffer
+		RHICmdList.UnlockBuffer(Resource->InputBuffer.Buffer);
+		// 调用RenderThread版本的函数
+		DispatchExampleComputeShader_RenderThread(RHICmdList, Resource, Scale, Translate, 16, 16, 16);
+	});
+
+	FlushRenderingCommands();
 }
 
 float GetGPUReadback(FSimulationShaderResource* Resource, float& OutputVal)
