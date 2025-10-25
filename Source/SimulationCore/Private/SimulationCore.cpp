@@ -8,6 +8,13 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSimulationCoreShaderParameters, )
 	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, InputBuffer)
 	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, OutputBuffer)
 	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray)
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray2)
+END_SHADER_PARAMETER_STRUCT()
+
+
+BEGIN_SHADER_PARAMETER_STRUCT(FSimulationLBMShaderParameters, )
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray)
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray2)
 END_SHADER_PARAMETER_STRUCT()
 
 
@@ -21,6 +28,41 @@ public:
 
 IMPLEMENT_SHADER_TYPE(, FSimulationCoreShaderCS, TEXT("/LBM/Shaders/SimulationCoreCompute.usf"), TEXT("FunctionMultiply"), SF_Compute)
 
+
+class FLBMInitialStateShaderCS : public FGlobalShader
+{
+public:
+	DECLARE_SHADER_TYPE(FLBMInitialStateShaderCS, Global)
+	SHADER_USE_PARAMETER_STRUCT(FLBMInitialStateShaderCS, FGlobalShader)
+		using FParameters = FSimulationLBMShaderParameters;
+};
+
+IMPLEMENT_SHADER_TYPE(, FLBMInitialStateShaderCS, TEXT("/LBM/Shaders/SimulationCoreCompute.usf"), TEXT("LBM_InitialState"), SF_Compute)
+
+
+
+class FLBMStreamingShaderCS : public FGlobalShader
+{
+public:
+	DECLARE_SHADER_TYPE(FLBMStreamingShaderCS, Global)
+	SHADER_USE_PARAMETER_STRUCT(FLBMStreamingShaderCS, FGlobalShader)
+		using FParameters = FSimulationLBMShaderParameters;
+};
+
+IMPLEMENT_SHADER_TYPE(, FLBMStreamingShaderCS, TEXT("/LBM/Shaders/SimulationCoreCompute.usf"), TEXT("LBM_Streaming"), SF_Compute)
+
+
+class FLBMCollisionShaderCS : public FGlobalShader
+{
+public:
+	DECLARE_SHADER_TYPE(FLBMCollisionShaderCS, Global)
+	SHADER_USE_PARAMETER_STRUCT(FLBMCollisionShaderCS, FGlobalShader)
+		using FParameters = FSimulationLBMShaderParameters;
+};
+
+IMPLEMENT_SHADER_TYPE(, FLBMCollisionShaderCS, TEXT("/LBM/Shaders/SimulationCoreCompute.usf"), TEXT("LBM_Collision"), SF_Compute)
+
+
 // ExampleComputeShaderModule.cpp
 
 // 初始化单例指针
@@ -31,12 +73,6 @@ FSimulationShaderResource* FSimulationShaderResource::Get()
 	if (GInstance == nullptr)
 	{
 		GInstance = new FSimulationShaderResource();
-		// 创建执行在RenderThread的任务。第一个括号写全局唯一的标识符，一般为这个Task起个名字。第二个写Lambda表达式，用FRHICommandList& RHICmdList作为函数参数。
-		ENQUEUE_RENDER_COMMAND(FInitSimulationCoreShaderResource)([](FRHICommandList& RHICmdList)
-			{
-				GInstance->InitResource(RHICmdList);
-			});
-		FlushRenderingCommands();
 	}
 	return GInstance;
 }
@@ -51,9 +87,10 @@ void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 	OutputBuffer.Initialize(RHICmdList, TEXT("OutputBuffer"), sizeof(float), 1);
 	OutputTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTexture")));
 
-	Desc.ArraySize = 4;
+	Desc.ArraySize = 9;
 	Desc.SetDimension(ETextureDimension::Texture2DArray);
 	OutputTextureArray = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTextureArray")));
+	OutputTextureArray2 = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTextureArray2")));
 
 	FRHIViewDesc ViewDesc;
 	
@@ -64,7 +101,11 @@ void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 	OutputTextureArrayUAV = RHICmdList.CreateUnorderedAccessView(OutputTextureArray, FRHIViewDesc::CreateTextureUAV()
 		.SetDimensionFromTexture(OutputTextureArray)
 		.SetMipLevel(0)
-		.SetArrayRange(0, 4));
+		.SetArrayRange(0, 9));
+	OutputTextureArray2UAV = RHICmdList.CreateUnorderedAccessView(OutputTextureArray2, FRHIViewDesc::CreateTextureUAV()
+		.SetDimensionFromTexture(OutputTextureArray2)
+		.SetMipLevel(0)
+		.SetArrayRange(0, 9));
 }
 
 // Buffer释放函数
@@ -72,6 +113,13 @@ void FSimulationShaderResource::ReleaseRHI()
 {
 	InputBuffer.Release();
 	OutputBuffer.Release();
+	OutputTextureUAV.SafeRelease();
+	OutputTextureArrayUAV.SafeRelease();
+	OutputTextureArray2UAV.SafeRelease();
+
+	OutputTexture.SafeRelease();
+	OutputTextureArray.SafeRelease();
+	OutputTextureArray2.SafeRelease();
 }
 
 void DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, float Scale, float Translate, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
@@ -98,6 +146,51 @@ void DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSim
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
 
 	// 取消绑定buffer参数
+	//UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
+	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
+}
+
+void DispatchLBMInitalState_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
+{
+	TShaderMapRef<FLBMInitialStateShaderCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
+	{
+		typename FLBMInitialStateShaderCS::FParameters Parameters{};
+		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
+		Parameters.OutputTextureArray2 = Resource->OutputTextureArray2UAV;
+		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
+	}
+	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+	//UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
+	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
+}
+
+void DispatchLBMStreaming_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
+{
+	TShaderMapRef<FLBMStreamingShaderCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
+	{
+		typename FLBMStreamingShaderCS::FParameters Parameters{};
+		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
+		Parameters.OutputTextureArray2 = Resource->OutputTextureArray2UAV;
+		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
+	}
+	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+	//UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
+	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
+}
+
+void DispatchLBMCollision_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
+{
+	TShaderMapRef<FLBMCollisionShaderCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
+	{
+		typename FLBMCollisionShaderCS::FParameters Parameters{};
+		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
+		Parameters.OutputTextureArray2 = Resource->OutputTextureArray2UAV;
+		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
+	}
+	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
 	//UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
 	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
 }

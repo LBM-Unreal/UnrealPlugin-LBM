@@ -7,6 +7,7 @@ float Translate;
 RWStructuredBuffer<float> InputBuffer;
 RWStructuredBuffer<float> OutputBuffer;
 RWTexture2DArray<float4> OutputTextureArray;
+RWTexture2DArray<float4> OutputTextureArray2;
 
 [numthreads(16, 16, 1)]
 void FunctionMultiply(
@@ -20,4 +21,184 @@ void FunctionMultiply(
     uint texelY = GroupID.y * 16 + tid.y;
     OutputTextureArray[uint3(texelX, texelY, 0)].x = (float) tid.x / 16.;
     OutputTextureArray[uint3(texelX, texelY, 0)].y = (float) tid.y / 16.;
+}
+
+[numthreads(16, 16, 1)]
+void LBM_InitialState(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    float2 u = float2(0., 0.);
+    
+    // x==0 inflow
+    if (texelX == 0) // skip the simulation boundaries
+    {
+        float maxU = 1.;
+        u = float2(maxU * (-pow(texelY - 128., 2.) / 128. / 128. + 1.), 0.);
+    }
+    
+    float p = 1.;
+    // use feq as initial values for streaming
+    float w[9] =
+    {
+        4. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.
+    };
+    
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(1., 0.),
+        float2(1., 1.),
+        float2(0., 1.),
+        float2(-1., 1.),
+        float2(-1., 0.),
+    };
+    float cs = 1. / sqrt(3.);
+    float feq[9];
+    for (int i = 0; i < 9; i++)
+    {
+        feq[i] = w[i] * p * (1. + 3. * dot(c[i], u) + 4.5 * pow(dot(c[i], u), 2.) - 1.5 * dot(u, u));
+        OutputTextureArray[uint3(texelX, texelY, i)].x = feq[i];
+    }
+}
+
+[numthreads(16, 16, 1)]
+void LBM_Streaming(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    /*
+    
+    1 2 3 
+    8 0 4
+    7 6 5
+    
+    */
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    if(texelX == 0 || texelY == 0 || texelY == 255) // skip the simulation boundaries
+    {
+        OutputTextureArray2[uint3(texelX, texelY, 0)] = OutputTextureArray[uint3(texelX, texelY, 0)];
+        OutputTextureArray2[uint3(texelX, texelY, 1)] = OutputTextureArray[uint3(texelX, texelY, 1)];
+        OutputTextureArray2[uint3(texelX, texelY, 2)] = OutputTextureArray[uint3(texelX, texelY, 2)];
+        OutputTextureArray2[uint3(texelX, texelY, 3)] = OutputTextureArray[uint3(texelX, texelY, 3)];
+        OutputTextureArray2[uint3(texelX, texelY, 4)] = OutputTextureArray[uint3(texelX, texelY, 4)];
+        OutputTextureArray2[uint3(texelX, texelY, 5)] = OutputTextureArray[uint3(texelX, texelY, 5)];
+        OutputTextureArray2[uint3(texelX, texelY, 6)] = OutputTextureArray[uint3(texelX, texelY, 6)];
+        OutputTextureArray2[uint3(texelX, texelY, 7)] = OutputTextureArray[uint3(texelX, texelY, 7)];
+        OutputTextureArray2[uint3(texelX, texelY, 8)] = OutputTextureArray[uint3(texelX, texelY, 8)];
+        return;
+    }
+    if (texelX == 255)
+    {
+        OutputTextureArray2[uint3(texelX, texelY, 0)] = OutputTextureArray[uint3(texelX, texelY, 0)];
+        OutputTextureArray2[uint3(texelX, texelY, 1)] = OutputTextureArray[uint3(texelX, texelY, 1)];
+        OutputTextureArray2[uint3(texelX, texelY, 2)] = OutputTextureArray[uint3(texelX, texelY + 1, 2)];
+        OutputTextureArray2[uint3(texelX, texelY, 3)] = OutputTextureArray[uint3(texelX - 1, texelY + 1, 3)];
+        OutputTextureArray2[uint3(texelX, texelY, 4)] = OutputTextureArray[uint3(texelX - 1, texelY, 4)];
+        OutputTextureArray2[uint3(texelX, texelY, 8)] = OutputTextureArray[uint3(texelX, texelY, 8)];
+        OutputTextureArray2[uint3(texelX, texelY, 5)] = OutputTextureArray[uint3(texelX - 1, texelY - 1, 5)];
+        OutputTextureArray2[uint3(texelX, texelY, 6)] = OutputTextureArray[uint3(texelX, texelY - 1, 6)];
+        OutputTextureArray2[uint3(texelX, texelY, 7)] = OutputTextureArray[uint3(texelX, texelY, 7)];
+        return;
+    }
+    OutputTextureArray2[uint3(texelX, texelY, 0)] = OutputTextureArray[uint3(texelX, texelY, 0)];
+    OutputTextureArray2[uint3(texelX, texelY, 1)] = OutputTextureArray[uint3(texelX + 1, texelY + 1, 1)];
+    OutputTextureArray2[uint3(texelX, texelY, 2)] = OutputTextureArray[uint3(texelX, texelY + 1, 2)];
+    OutputTextureArray2[uint3(texelX, texelY, 3)] = OutputTextureArray[uint3(texelX - 1, texelY + 1, 3)];
+    OutputTextureArray2[uint3(texelX, texelY, 4)] = OutputTextureArray[uint3(texelX - 1, texelY, 4)];
+    OutputTextureArray2[uint3(texelX, texelY, 8)] = OutputTextureArray[uint3(texelX + 1, texelY, 8)];
+    OutputTextureArray2[uint3(texelX, texelY, 5)] = OutputTextureArray[uint3(texelX - 1, texelY - 1, 5)];
+    OutputTextureArray2[uint3(texelX, texelY, 6)] = OutputTextureArray[uint3(texelX, texelY - 1, 6)];
+    OutputTextureArray2[uint3(texelX, texelY, 7)] = OutputTextureArray[uint3(texelX + 1, texelY - 1, 7)];
+}
+
+
+[numthreads(16, 16, 1)]
+void LBM_Collision(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    /*
+    
+    1 2 3 
+    8 0 4
+    7 6 5
+    
+    */
+    
+    float4 f1_4;
+    float4 f5_8;
+    float f0;
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    if (texelX == 0 || texelY == 0 || texelX == 255 || texelY == 255) // skip the simulation boundaries
+    {
+        return;
+    }
+    float f[9];
+    float p = 0.;
+    float2 u = float2(0., 0.);
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(1., 0.),
+        float2(1., 1.),
+        float2(0., 1.),
+        float2(-1., 1.),
+        float2(-1., 0.),
+    };
+    for(int i = 0; i < 9; i++)
+    {
+        f[i] = OutputTextureArray2[uint3(texelX, texelY, i)].x;
+        p += f[i];
+        u += c[i] * f[i];
+    }
+    u = u / p;
+    float w[9] =
+    {
+        4./9.,
+        1./36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.
+    };
+    float cs = 1. / sqrt(3.);
+    float feq[9];
+    for (int i = 0; i < 9; i++)
+    {
+        feq[i] = w[i] * p * (1. + 3. * dot(c[i], u) + 4.5 * pow(dot(c[i], u), 2.) - 1.5 * dot(u, u));
+        f[i] = f[i] - (f[i] - feq[i]) * 0.1; // relaxation time tau = 0.1
+    }
+    
+    for (int i = 0; i < 9; i++)
+    {
+        OutputTextureArray[uint3(texelX, texelY, i)].x = f[i];
+    }
 }

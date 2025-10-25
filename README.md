@@ -1,3 +1,13 @@
+# Additional References
+
+## LBM Introduction
+
+https://www.youtube.com/watch?v=jfk4feD7rFQ
+
+https://www.youtube.com/watch?v=8qorVDJS1QA
+
+https://ppluscht.github.io/LBM/
+
 # Project Setup
 
 1. Install your Unreal Engine, either epic launcher version or source code version. I will use epic launcher version. For the source code version, please follow the documentation on epic website. 
@@ -31,3 +41,9 @@
 ![](./Misc/5.png)
 
 5. For the global shader creation, please see my blog [Link](https://sirenri2001.github.io/2025-02-05-unreal-shader-tutorial-(Chinese)/). Also check Reference folder for additional papers for LBM implementation.
+
+# Q&A 
+
+1. Q:Why my debug key input does not work?
+
+A: After dropping your blueprint actor to scene, select that then see the property window, select Misc tab, replace `Disable Input` to `Player 0`

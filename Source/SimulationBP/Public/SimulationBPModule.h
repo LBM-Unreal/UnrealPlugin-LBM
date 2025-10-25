@@ -65,4 +65,36 @@ public:
 				IRenderDocPlugin::Get().EndCapture(&RHICmdList);
 			});
 	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Update Resource"), Category = "LBM Sim")
+	static SIMULATIONBP_API void UpdateResource() {
+		ENQUEUE_RENDER_COMMAND(FUpdateResource)([](FRHICommandListImmediate& RHICmdList)
+			{
+				FSimulationShaderResource::Get()->UpdateRHI(RHICmdList);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM InitialState"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMInitialState() {
+		ENQUEUE_RENDER_COMMAND(FLBMInitialState)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMInitalState_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Streaming"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMStreaming() {
+		ENQUEUE_RENDER_COMMAND(FLBMStreaming)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMStreaming_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Collision"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMCollision() {
+		ENQUEUE_RENDER_COMMAND(FLBMCollision)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMCollision_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+			});
+	}
 };
