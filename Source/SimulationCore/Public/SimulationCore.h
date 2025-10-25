@@ -8,6 +8,8 @@ public:
 	FRWBufferStructured OutputBuffer; // RWStructuredBuffer<float> OutputBuffer;
 	FTextureRHIRef OutputTexture;
 	FUnorderedAccessViewRHIRef OutputTextureUAV;
+	FTexture2DArrayRHIRef OutputTextureArray;
+	FUnorderedAccessViewRHIRef OutputTextureArrayUAV;
 
 	virtual void InitRHI(FRHICommandListBase& RHICmdList) override;
 

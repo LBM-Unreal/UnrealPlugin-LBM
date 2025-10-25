@@ -7,7 +7,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSimulationCoreShaderParameters, )
 	SHADER_PARAMETER(float, Translate)
 	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, InputBuffer)
 	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, OutputBuffer)
-	SHADER_PARAMETER_UAV(RWTexture2D<float4>, OutputTexture)
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray)
 END_SHADER_PARAMETER_STRUCT()
 
 
@@ -16,7 +16,6 @@ class FSimulationCoreShaderCS : public FGlobalShader
 public:
 	DECLARE_SHADER_TYPE(FSimulationCoreShaderCS, Global)
 		SHADER_USE_PARAMETER_STRUCT(FSimulationCoreShaderCS, FGlobalShader)
-
 		using FParameters = FSimulationCoreShaderParameters;
 };
 
@@ -51,12 +50,21 @@ void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 	InputBuffer.Initialize(RHICmdList, TEXT("InputBuffer"), sizeof(float), 1);
 	OutputBuffer.Initialize(RHICmdList, TEXT("OutputBuffer"), sizeof(float), 1);
 	OutputTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTexture")));
+
+	Desc.ArraySize = 4;
+	Desc.SetDimension(ETextureDimension::Texture2DArray);
+	OutputTextureArray = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTextureArray")));
+
 	FRHIViewDesc ViewDesc;
 	
 	OutputTextureUAV = RHICmdList.CreateUnorderedAccessView(OutputTexture, FRHIViewDesc::CreateTextureUAV()
 		.SetDimensionFromTexture(OutputTexture)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 1));
+	OutputTextureArrayUAV = RHICmdList.CreateUnorderedAccessView(OutputTextureArray, FRHIViewDesc::CreateTextureUAV()
+		.SetDimensionFromTexture(OutputTextureArray)
+		.SetMipLevel(0)
+		.SetArrayRange(0, 4));
 }
 
 // Buffer释放函数
@@ -80,7 +88,7 @@ void DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSim
 		// 设置buffer类型
 		Parameters.InputBuffer = Resource->InputBuffer.UAV;
 		Parameters.OutputBuffer = Resource->OutputBuffer.UAV;
-		Parameters.OutputTexture = Resource->OutputTextureUAV;
+		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
 
 		// 传入参数
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);

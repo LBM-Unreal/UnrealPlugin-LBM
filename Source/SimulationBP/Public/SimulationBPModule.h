@@ -37,11 +37,23 @@ public:
 		});
 	}
 
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Grab Output Texture By Array Id"), Category = "LBM Sim")
+	static SIMULATIONBP_API void GrabOutputTextureByArrayId(UTexture* OutTexture, int Index)
+	{
+		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture, Index](FRHICommandListImmediate& RHICmdList)
+			{
+				FRHICopyTextureInfo CopyInfo;
+				CopyInfo.Size = { 256,256,1 };
+				CopyInfo.SourceSliceIndex = Index;
+				RHICmdList.CopyTexture(FSimulationShaderResource::Get()->OutputTextureArray, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
+			});
+	}
+
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Start Renderdoc"), Category = "LBM Sim")
 	static SIMULATIONBP_API void StartRenderdoc() {
 		ENQUEUE_RENDER_COMMAND(FStartRenderdoc)([](FRHICommandListImmediate& RHICmdList)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("Saved in %s"), *FString(FPaths::Combine(FPaths::ProjectDir(), TEXT("Captures"))));
+				UE_LOG(LogTemp, Warning, TEXT("RDC saved in %s"), *FString(FPaths::Combine(FPaths::ProjectDir(), TEXT("Captures"))));
 				IRenderDocPlugin::Get().BeginCapture(&RHICmdList, 0, FPaths::Combine(FPaths::ProjectDir(), TEXT("Captures")));
 			});
 	}

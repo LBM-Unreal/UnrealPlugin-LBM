@@ -6,17 +6,18 @@ float Translate;
 
 RWStructuredBuffer<float> InputBuffer;
 RWStructuredBuffer<float> OutputBuffer;
-RWTexture2D<float4> OutputTexture;
+RWTexture2DArray<float4> OutputTextureArray;
 
 [numthreads(16, 16, 1)]
 void FunctionMultiply(
 	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
 	uint GroupIndex : SV_GroupIndex,
 	uint3 GroupID: SV_GroupID)
 {
-    OutputBuffer[DispatchThreadId.x] = InputBuffer[DispatchThreadId.x] * Scale + Translate;
-	uint texelX = GroupID.x * 16 + DispatchThreadId.x;
-	uint texelY = GroupID.y * 16 + DispatchThreadId.y;
-    OutputTexture[uint2(texelX, texelY)].x = (float) DispatchThreadId.x / 16.;
-    OutputTexture[uint2(texelX, texelY)].y = (float) DispatchThreadId.y / 16.;
+    OutputBuffer[tid.x] = InputBuffer[tid.x] * Scale + Translate;
+    uint texelX = GroupID.x * 16 + tid.x;
+    uint texelY = GroupID.y * 16 + tid.y;
+    OutputTextureArray[uint3(texelX, texelY, 0)].x = (float) tid.x / 16.;
+    OutputTextureArray[uint3(texelX, texelY, 0)].y = (float) tid.y / 16.;
 }

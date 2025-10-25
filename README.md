@@ -8,7 +8,7 @@
 
 3. When you finish install unreal engine, right click file LBM.uproject, then click `Generate Visual Studio project files`. Then use LBM.sln vs solution file to compile and debug the UE project.
 
-4. Before you run the project, check the file `./Config/DefaultEngine.ini` in the project folder. You should change the setting `renderdoc.BinaryPath` to your install location of renderdoc. If you compile your renderdoc from source, you should set the directory to the folder contains renderdoc.dll
+4. Before you run the project, check the file `./Config/DefaultEngine.ini` in the project folder. You should change the setting `renderdoc.BinaryPath` to your install location of renderdoc. **Note: Don't use backslash`\` in path, please use slash`/`** If you compile your renderdoc from source, you should set the directory to the folder contains renderdoc.dll
 
 5. Also, check your `Engine/UE5/Config/ConsoleVariables.ini` in vs solution explorer. You may want to use `r.ShaderDevelopmentMode=1` and `r.DumpShaderDebugInfo=1`.
 
@@ -30,4 +30,4 @@
 
 ![](./Misc/5.png)
 
-5. For the global shader creation, please see my blog [Link](https://sirenri2001.github.io/2025-02-05-unreal-shader-tutorial-(Chinese)/)
+5. For the global shader creation, please see my blog [Link](https://sirenri2001.github.io/2025-02-05-unreal-shader-tutorial-(Chinese)/). Also check Reference folder for additional papers for LBM implementation.
