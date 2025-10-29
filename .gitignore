@@ -76,3 +76,6 @@ DerivedDataCache/*
 
 # RenderDoc capture files
 *.rdc
+
+# Visual Studio Tools
+Plugins/VisualStudioTools/*
