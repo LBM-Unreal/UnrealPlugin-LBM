@@ -26,15 +26,17 @@ public:
 		return GetGPUReadback(FSimulationShaderResource::Get(), OutputVal);
 	}
 
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Output Texture Value"), Category = "LBM Sim")
-	static SIMULATIONBP_API void GetOutputTextureValue(UTexture* OutTexture)
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Debug Texture Value"), Category = "LBM Sim")
+	static SIMULATIONBP_API void GetDebugTextureValue(UTexture* OutTexture)
 	{
+		FlushRenderingCommands();
 		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture](FRHICommandListImmediate& RHICmdList)
 		{
 			FRHICopyTextureInfo CopyInfo;
 			CopyInfo.Size = {256,256,1};
-			RHICmdList.CopyTexture(FSimulationShaderResource::Get()->OutputTexture, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
+			RHICmdList.CopyTexture(FSimulationShaderResource::Get()->DebugTexture, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
 		});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Grab Output Texture By Array Id"), Category = "LBM Sim")

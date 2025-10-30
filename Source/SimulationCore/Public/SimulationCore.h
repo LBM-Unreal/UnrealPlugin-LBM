@@ -6,8 +6,8 @@ class SIMULATIONCORE_API FSimulationShaderResource : public FRenderResource
 public:
 	FRWBufferStructured InputBuffer;  // RWStructuredBuffer<float> InputBuffer;
 	FRWBufferStructured OutputBuffer; // RWStructuredBuffer<float> OutputBuffer;
-	FTextureRHIRef OutputTexture;
-	FUnorderedAccessViewRHIRef OutputTextureUAV;
+	FTextureRHIRef DebugTexture;
+	FUnorderedAccessViewRHIRef DebugTextureUAV;
 	FTexture2DArrayRHIRef OutputTextureArray;
 	FUnorderedAccessViewRHIRef OutputTextureArrayUAV;
 	FTexture2DArrayRHIRef OutputTextureArray2;
