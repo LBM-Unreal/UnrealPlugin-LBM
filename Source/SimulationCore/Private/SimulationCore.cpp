@@ -7,15 +7,15 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSimulationCoreShaderParameters, )
 	SHADER_PARAMETER(float, Translate)
 	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, InputBuffer)
 	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, OutputBuffer)
-	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray)
-	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray2)
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray)
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray2)
 	SHADER_PARAMETER_UAV(RWTexture2D<float4>, DebugTexture)
 END_SHADER_PARAMETER_STRUCT()
 
 
 BEGIN_SHADER_PARAMETER_STRUCT(FSimulationLBMShaderParameters, )
-	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray)
-	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, OutputTextureArray2)
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray)
+	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray2)
 	SHADER_PARAMETER_UAV(RWTexture2D<float4>, DebugTexture)
 END_SHADER_PARAMETER_STRUCT()
 
@@ -91,8 +91,8 @@ void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 
 	Desc.ArraySize = 9;
 	Desc.SetDimension(ETextureDimension::Texture2DArray);
-	OutputTextureArray = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTextureArray")));
-	OutputTextureArray2 = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_OutputTextureArray2")));
+	SimulationDataArray = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_SimulationDataArray")));
+	SimulationDataArray2 = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_SimulationDataArray2")));
 
 	FRHIViewDesc ViewDesc;
 	
@@ -100,12 +100,12 @@ void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 		.SetDimensionFromTexture(DebugTexture)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 1));
-	OutputTextureArrayUAV = RHICmdList.CreateUnorderedAccessView(OutputTextureArray, FRHIViewDesc::CreateTextureUAV()
-		.SetDimensionFromTexture(OutputTextureArray)
+	SimulationDataArrayUAV = RHICmdList.CreateUnorderedAccessView(SimulationDataArray, FRHIViewDesc::CreateTextureUAV()
+		.SetDimensionFromTexture(SimulationDataArray)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 9));
-	OutputTextureArray2UAV = RHICmdList.CreateUnorderedAccessView(OutputTextureArray2, FRHIViewDesc::CreateTextureUAV()
-		.SetDimensionFromTexture(OutputTextureArray2)
+	SimulationDataArray2UAV = RHICmdList.CreateUnorderedAccessView(SimulationDataArray2, FRHIViewDesc::CreateTextureUAV()
+		.SetDimensionFromTexture(SimulationDataArray2)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 9));
 
@@ -118,12 +118,12 @@ void FSimulationShaderResource::ReleaseRHI()
 	InputBuffer.Release();
 	OutputBuffer.Release();
 	DebugTextureUAV.SafeRelease();
-	OutputTextureArrayUAV.SafeRelease();
-	OutputTextureArray2UAV.SafeRelease();
+	SimulationDataArrayUAV.SafeRelease();
+	SimulationDataArray2UAV.SafeRelease();
 
 	DebugTexture.SafeRelease();
-	OutputTextureArray.SafeRelease();
-	OutputTextureArray2.SafeRelease();
+	SimulationDataArray.SafeRelease();
+	SimulationDataArray2.SafeRelease();
 }
 
 void DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, float Scale, float Translate, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
@@ -140,7 +140,7 @@ void DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSim
 		// 设置buffer类型
 		Parameters.InputBuffer = Resource->InputBuffer.UAV;
 		Parameters.OutputBuffer = Resource->OutputBuffer.UAV;
-		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
+		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 
 		// 传入参数
@@ -161,8 +161,8 @@ void DispatchLBMInitalState_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMInitialStateShaderCS::FParameters Parameters{};
-		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
-		Parameters.OutputTextureArray2 = Resource->OutputTextureArray2UAV;
+		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
+		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
@@ -177,8 +177,8 @@ void DispatchLBMStreaming_RenderThread(FRHICommandList& RHICmdList, FSimulationS
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMStreamingShaderCS::FParameters Parameters{};
-		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
-		Parameters.OutputTextureArray2 = Resource->OutputTextureArray2UAV;
+		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
+		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
@@ -193,8 +193,8 @@ void DispatchLBMCollision_RenderThread(FRHICommandList& RHICmdList, FSimulationS
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMCollisionShaderCS::FParameters Parameters{};
-		Parameters.OutputTextureArray = Resource->OutputTextureArrayUAV;
-		Parameters.OutputTextureArray2 = Resource->OutputTextureArray2UAV;
+		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
+		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}

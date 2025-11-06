@@ -47,7 +47,7 @@ public:
 				FRHICopyTextureInfo CopyInfo;
 				CopyInfo.Size = { 256,256,1 };
 				CopyInfo.SourceSliceIndex = Index;
-				RHICmdList.CopyTexture(FSimulationShaderResource::Get()->OutputTextureArray, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
+				RHICmdList.CopyTexture(FSimulationShaderResource::Get()->SimulationDataArray, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
 			});
 	}
 

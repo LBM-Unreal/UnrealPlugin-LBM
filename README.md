@@ -8,6 +8,8 @@ https://www.youtube.com/watch?v=8qorVDJS1QA
 
 https://ppluscht.github.io/LBM/
 
+https://pastewka.github.io/Accelerators/lecture/boundary-conditions.html
+
 # Project Setup
 
 1. Install your Unreal Engine, either epic launcher version or source code version. I will use epic launcher version. For the source code version, please follow the documentation on epic website. 
