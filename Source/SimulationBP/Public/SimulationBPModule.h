@@ -99,4 +99,49 @@ public:
 				DispatchLBMCollision_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
 			});
 	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Debug Texture Value 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void GetDebugTextureValue3D(UTexture* OutTexture)
+	{
+		FlushRenderingCommands();
+		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture](FRHICommandListImmediate& RHICmdList)
+			{
+				FRHICopyTextureInfo CopyInfo;
+				CopyInfo.Size = { 128,128,1 };
+				RHICmdList.CopyTexture(FSimulationShaderResource3D::Get()->DebugTexture, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
+			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Update Resource 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void UpdateResource3D() {
+		ENQUEUE_RENDER_COMMAND(FUpdateResource)([](FRHICommandListImmediate& RHICmdList)
+			{
+				FSimulationShaderResource3D::Get()->UpdateRHI(RHICmdList);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM InitialState 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMInitialState3D() {
+		ENQUEUE_RENDER_COMMAND(FLBMInitialState)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMInitalState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Streaming 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMStreaming3D() {
+		ENQUEUE_RENDER_COMMAND(FLBMStreaming)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMStreaming3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Collision 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMCollision3D() {
+		ENQUEUE_RENDER_COMMAND(FLBMCollision)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
+			});
+	}
 };

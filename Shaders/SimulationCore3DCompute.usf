@@ -1,0 +1,517 @@
+// SimulationCoreCompute.usf
+#include "/Engine/Public/Platform.ush"
+
+float Scale;
+float Translate;
+
+RWStructuredBuffer<float> InputBuffer;
+RWStructuredBuffer<float> OutputBuffer;
+RWTexture2DArray<float4> SimulationDataArray;
+RWTexture2DArray<float4> SimulationDataArray2;
+RWTexture2D<float4> DebugTexture;
+
+#define DIM_X 128
+#define DIM_Y 128
+#define DIM_Z 128
+
+#define BLOCK_DIM_X 8
+#define BLOCK_DIM_Y 8
+#define BLOCK_DIM_Z 8
+
+#define DEBUG_TEXTURE_SLICE 56
+
+///////////////
+//
+// Lattice Types(boundary):
+// 0: internal
+// 1: solid boundary (with bounce-back behavior)
+// 2: inlet
+// 3: outlet
+//
+///////////////
+//
+// Implement a D3Q19 LBM simulation
+//
+///////////////
+
+/*
+Grid structure:
+Indices is different from the reference paper (hecht2010.pdf) since I let opposite c_i's indices sum to 19
+.---->x
+|\
+| \
+|  z
+y
+
+z=1
+     .  5  .
+     6  7  8
+     .  9  .
+z=0
+     1  2  3
+     4  0 15
+    16 17 18
+z=-1
+    .  10  .
+    11 12 13
+    .  14  .
+
+*/
+
+
+void StoreSimulationData3D(in uint texelX, in uint texelY, in uint texelZ, in float f[19], in float boundary)
+{
+    // 5 slices for each grid
+    SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 0)] = float4(f[0], f[1], f[2], f[3]);
+    SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 1)] = float4(f[4], f[5], f[6], f[7]);
+    SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 2)] = float4(f[8], f[9], f[10], f[11]);
+    SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 3)] = float4(f[12], f[13], f[14], f[15]);
+    SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 4)] = float4(f[16], f[17], f[18], boundary);
+}
+
+void StoreSimulationData3D_2(in uint texelX, in uint texelY, in uint texelZ, in float f[19], in float boundary)
+{
+    SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 0)] = float4(f[0], f[1], f[2], f[3]);
+    SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 1)] = float4(f[4], f[5], f[6], f[7]);
+    SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 2)] = float4(f[8], f[9], f[10], f[11]);
+    SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 3)] = float4(f[12], f[13], f[14], f[15]);
+    SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 4)] = float4(f[16], f[17], f[18], boundary);
+}
+
+void ReadSimulationData3D(in uint texelX, in uint texelY, in uint texelZ, out float f[19], out float boundary)
+{
+    float4 f0_3 = SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 0)];
+    float4 f4_7 = SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 1)];
+    float4 f8_11 = SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 2)];
+    float4 f12_15 = SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 3)];
+    float4 f16_b = SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 4)];
+    f[0] = f0_3.x;
+    f[1] = f0_3.y;
+    f[2] = f0_3.z;
+    f[3] = f0_3.w;
+    f[4] = f4_7.x;
+    f[5] = f4_7.y;
+    f[6] = f4_7.z;
+    f[7] = f4_7.w;
+    f[8] = f8_11.x;
+    f[9] = f8_11.y;
+    f[10] = f8_11.z;
+    f[11] = f8_11.w;
+    f[12] = f12_15.x;
+    f[13] = f12_15.y;
+    f[14] = f12_15.z;
+    f[15] = f12_15.w;
+    f[16] = f16_b.x;
+    f[17] = f16_b.y;
+    f[18] = f16_b.z;
+    boundary = f16_b.w;
+}
+
+void ReadBoundaryValues3D(in uint texelX, in uint texelY, in uint texelZ, out float2 u, out float p)
+{
+    // TODO: for dynamic boundaries
+}
+
+void StoreBoundaryValues3D(in uint texelX, in uint texelY, in uint texelZ, in float2 u, in float p)
+{
+    // TODO: for dynamic boundaries
+}
+
+void ReadSimulationDataPreStream3D(in uint texelX, in uint texelY, in uint texelZ, out float f[19])
+{    
+    f[0] = SimulationDataArray[uint3(texelX, texelY, 5 * texelZ + 0)].x;
+    f[1] = SimulationDataArray[uint3(texelX+1, texelY+1, 5 * texelZ + 0)].y;
+    f[2] = SimulationDataArray[uint3(texelX, texelY+1, 5 * texelZ + 0)].z;
+    f[3] = SimulationDataArray[uint3(texelX-1, texelY+1, 5 * texelZ + 0)].w;
+    f[4] = SimulationDataArray[uint3(texelX+1, texelY, 5 * texelZ + 1)].x;
+    f[5] = SimulationDataArray[uint3(texelX, texelY+1, 5 * (texelZ - 1) + 1)].y;
+    f[6] = SimulationDataArray[uint3(texelX+1, texelY, 5 * (texelZ - 1) + 1)].z;
+    f[7] = SimulationDataArray[uint3(texelX, texelY, 5 * (texelZ - 1) + 1)].w;
+    f[8] = SimulationDataArray[uint3(texelX-1, texelY, 5 * (texelZ - 1) + 2)].x;
+    f[9] = SimulationDataArray[uint3(texelX, texelY-1, 5 * (texelZ - 1) + 2)].y;
+    f[10] = SimulationDataArray[uint3(texelX, texelY+1, 5 * (texelZ + 1) + 2)].z;
+    f[11] = SimulationDataArray[uint3(texelX+1, texelY, 5 * (texelZ + 1) + 2)].w;
+    f[12] = SimulationDataArray[uint3(texelX, texelY, 5 * (texelZ + 1) + 3)].x;
+    f[13] = SimulationDataArray[uint3(texelX-1, texelY, 5 * (texelZ + 1) + 3)].y;
+    f[14] = SimulationDataArray[uint3(texelX, texelY-1, 5 * (texelZ + 1) + 3)].z;
+    f[15] = SimulationDataArray[uint3(texelX-1, texelY, 5 * texelZ + 3)].w;
+    f[16] = SimulationDataArray[uint3(texelX+1, texelY-1, 5 * texelZ + 4)].x;
+    f[17] = SimulationDataArray[uint3(texelX, texelY-1, 5 * texelZ + 4)].y;
+    f[18] = SimulationDataArray[uint3(texelX-1, texelY-1, 5 * texelZ + 4)].z;
+}
+
+void ReadSimulationData3D_2(in uint texelX, in uint texelY, in uint texelZ, out float f[19], out float boundary)
+{
+    float4 f0_3 = SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 0)];
+    float4 f4_7 = SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 1)];
+    float4 f8_11 = SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 2)];
+    float4 f12_15 = SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 3)];
+    float4 f16_b = SimulationDataArray2[uint3(texelX, texelY, 5 * texelZ + 4)];
+    f[0] = f0_3.x;
+    f[1] = f0_3.y;
+    f[2] = f0_3.z;
+    f[3] = f0_3.w;
+    f[4] = f4_7.x;
+    f[5] = f4_7.y;
+    f[6] = f4_7.z;
+    f[7] = f4_7.w;
+    f[8] = f8_11.x;
+    f[9] = f8_11.y;
+    f[10] = f8_11.z;
+    f[11] = f8_11.w;
+    f[12] = f12_15.x;
+    f[13] = f12_15.y;
+    f[14] = f12_15.z;
+    f[15] = f12_15.w;
+    f[16] = f16_b.x;
+    f[17] = f16_b.y;
+    f[18] = f16_b.z;
+    boundary = f16_b.w;
+}
+
+float sphere3D(float3 p, float3 center, float radius)
+{
+    return length(p - center) - radius;
+}
+
+float GetEquilibrium(float3 u, float p, float3 ci, float wi)
+{
+    return wi * p * (1. + 3. * dot(ci, u) + 4.5 * pow(dot(ci, u), 2.) - 1.5 * dot(u, u));
+}
+
+
+[numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
+void LBM_InitialState3D(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    uint texelZ = DispatchThreadId.z;
+    if (texelX > DIM_X - 1 || texelY > DIM_Y - 1 || texelZ > DIM_Z - 1)
+    {
+        return;
+    }
+    // lbm constants D3Q19 see reference
+    float w[19] =
+    {
+        1. / 3., // [0]
+        1. / 36., // [1 - 4]
+        2. / 36.,
+        1. / 36.,
+        2. / 36.,
+        1. / 36., // [5 - 9]
+        1. / 36.,
+        2. / 36.,
+        1. / 36.,
+        1. / 36.,
+        1. / 36., // [10 - 14]
+        1. / 36.,
+        2. / 36.,
+        1. / 36.,
+        1. / 36.,
+        2. / 36., // [15 - 18]
+        1. / 36.,
+        2. / 36.,
+        1. / 36.
+    };
+    
+    float3 c[19] =
+    {
+        float3(0., 0., 0.),
+        float3(-1., -1., 0.),
+        float3(0., -1., 0.),
+        float3(1., -1., 0.),
+        float3(-1., 0., 0.),
+        float3(0., -1., 1.),
+        float3(-1., 0., 1.),
+        float3(0., 0., 1.),
+        float3(1., 0., 1.),
+        float3(0., 1., 1.),
+        float3(0., -1., -1.),
+        float3(-1., 0., -1.),
+        float3(0., 0., -1.),
+        float3(1., 0., -1.),
+        float3(0., 1., -1.),
+        float3(1., 0., 0.),
+        float3(-1., 1., 0.),
+        float3(0., 1., 0.),
+        float3(1., 1., 0.),
+    };
+    float cs = 1. / sqrt(3.);
+    
+    
+    float3 u = float3(0., 0., 0.);
+    float p = 0.0003;
+    float feq[19];
+    
+    float boundary = 0.;
+    
+    // process all boundary settings
+    if (texelX <= 0 || texelX >= DIM_X - 1 || texelY <= 0 || texelY >= DIM_Y - 1 || texelZ <= 0 || texelZ >= DIM_Z - 1)
+    {
+        boundary = 1.; // type 1 lattice
+        for (int i = 0; i < 19; i++)
+        {
+            feq[i] = length(c[i]) * -0.5;
+        }
+        feq[0] = -1.; // pos 0 does not matter, will be overwriten later
+    }
+    // inside solid boundary
+    float3 center = float3(DIM_X/2., DIM_Y/2., DIM_Z/2.);
+    float radius = 10;
+    float d = sphere3D(float3(texelX, texelY, texelZ), center, radius);
+    if (d < 0.)
+    {
+        boundary = 1.;
+        for (int i = 0; i < 19; i++)
+        {
+            feq[i] = d;
+        }
+    }
+    if (texelX == 0)
+    {
+        boundary = 2.; // type 2 lattice with fixed velocity
+        float maxU = 0.0005;
+        u = float3(maxU, 0., 0.);
+        p = 0.0006;
+        //StoreBoundaryValues3D(texelX, texelY, texelZ, u, p);
+
+    }
+    if (texelX == DIM_X - 1 && texelY > 0 && texelY < DIM_Y - 1 && texelZ > 0 && texelZ < DIM_Z - 1)
+    {
+        boundary = 3.;
+    }
+    
+    if (boundary == 0. || boundary == 2. || boundary == 3.)
+    {
+        for (int i = 0; i < 19; i++)
+        {
+            feq[i] = GetEquilibrium(u, p, c[i], w[i]);
+        }
+    }
+    
+    StoreSimulationData3D(texelX, texelY, texelZ, feq, boundary);
+    if (texelZ == DEBUG_TEXTURE_SLICE)
+    {
+        float f_1[19];
+        ReadSimulationData3D(texelX, texelY, texelZ, f_1, boundary);
+        DebugTexture[uint2(texelX, texelY)].x = f_1[0];
+        DebugTexture[uint2(texelX, texelY)].y = 1. - f_1[0];
+    }
+}
+
+[numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
+void LBM_Streaming3D(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    uint texelZ = DispatchThreadId.z;
+    if (texelX > DIM_X - 1 || texelY > DIM_Y - 1 || texelZ > DIM_Z - 1)
+    {
+        return;
+    }
+    float f[19];
+    float f_streamed[19];
+    float boundary;
+    
+    ReadSimulationData3D(texelX, texelY, texelZ, f, boundary);
+    /*if (texelZ == DEBUG_TEXTURE_SLICE)
+    {
+        DebugTexture[uint2(texelX, texelY)].x = f[4];
+        DebugTexture[uint2(texelX, texelY)].y = 1. - f[4];
+        if (boundary >= 1.) // no simulation inside solid 
+        {
+            DebugTexture[uint2(texelX, texelY)].xyz = float3(1., 0., 1.);
+        }
+    }*/
+    if (boundary >= 1.) // no simulation inside solid 
+    {
+        return;
+    }
+    ReadSimulationDataPreStream3D(texelX, texelY, texelZ, f_streamed);
+    StoreSimulationData3D_2(texelX, texelY, texelZ, f_streamed, boundary);
+    //StoreSimulationData3D(texelX, texelY, texelZ, f_streamed, boundary);
+}
+
+bool IsNaN(float x)
+{
+    return !(x < 0.f || x > 0.f || x == 0.f);
+}
+
+void GetVelocityAndDensity(in float f[19], out float3 u, out float p)
+{
+    float3 c[19] =
+    {
+        float3(0., 0., 0.),
+        float3(-1., -1., 0.),
+        float3(0., -1., 0.),
+        float3(1., -1., 0.),
+        float3(-1., 0., 0.),
+        float3(0., -1., 1.),
+        float3(-1., 0., 1.),
+        float3(0., 0., 1.),
+        float3(1., 0., 1.),
+        float3(0., 1., 1.),
+        float3(0., -1., -1.),
+        float3(-1., 0., -1.),
+        float3(0., 0., -1.),
+        float3(1., 0., -1.),
+        float3(0., 1., -1.),
+        float3(1., 0., 0.),
+        float3(-1., 1., 0.),
+        float3(0., 1., 0.),
+        float3(1., 1., 0.),
+    };
+    p = 0.;
+    u = float3(0., 0., 0.);
+    for (int i = 0; i < 19; i++)
+    {
+        p += f[i];
+        u += c[i] * f[i];
+    }
+    u = u / p;
+}
+
+[numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
+void LBM_Collision3D(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{    
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    uint texelZ = DispatchThreadId.z;
+    if (texelX > DIM_X - 1 || texelY > DIM_Y - 1 || texelZ > DIM_Z - 1)
+    {
+        return;
+    }
+    
+    // LBM constants
+    float3 c[19] =
+    {
+        float3(0., 0., 0.),
+        float3(-1., -1., 0.),
+        float3(0., -1., 0.),
+        float3(1., -1., 0.),
+        float3(-1., 0., 0.),
+        float3(0., -1., 1.),
+        float3(-1., 0., 1.),
+        float3(0., 0., 1.),
+        float3(1., 0., 1.),
+        float3(0., 1., 1.),
+        float3(0., -1., -1.),
+        float3(-1., 0., -1.),
+        float3(0., 0., -1.),
+        float3(1., 0., -1.),
+        float3(0., 1., -1.),
+        float3(1., 0., 0.),
+        float3(-1., 1., 0.),
+        float3(0., 1., 0.),
+        float3(1., 1., 0.),
+    };
+    
+    float w[19] =
+    {
+        1. / 3., // [0]
+        1. / 36., // [1 - 4]
+        2. / 36.,
+        1. / 36.,
+        2. / 36.,
+        1. / 36., // [5 - 9]
+        1. / 36.,
+        2. / 36.,
+        1. / 36.,
+        1. / 36.,
+        1. / 36., // [10 - 14]
+        1. / 36.,
+        2. / 36.,
+        1. / 36.,
+        1. / 36.,
+        2. / 36., // [15 - 18]
+        1. / 36.,
+        2. / 36.,
+        1. / 36.
+    };
+    
+    // lbm distribution functions
+    float f[19];
+    float f_streamed[19];
+    float boundary = 0;
+    
+    ReadSimulationData3D(texelX, texelY, texelZ, f, boundary);
+    if (boundary == 3.)
+    {
+        float f_left[19];
+        float boundary_left;
+        ReadSimulationData3D(texelX - 1, texelY, texelZ, f_left, boundary_left);
+        StoreSimulationData3D(texelX, texelY, texelZ, f_left, boundary);
+    }
+    if (boundary >= 1.) // no simulation inside solid 
+    {
+        if (texelZ == DEBUG_TEXTURE_SLICE)
+        {
+            DebugTexture[uint2(texelX, texelY)] = float4(1., 0., 1., 1.);
+        }
+        return;
+    }
+    ReadSimulationData3D_2(texelX, texelY, texelZ, f_streamed, boundary);
+    
+    
+    float p = 0.;
+    float3 u = float3(0., 0., 0.);
+    
+    // boundary treatment
+    // bounce back
+    for (int i = 1; i < 19; i++)
+    {
+        if (f_streamed[i] < 0.)
+        {
+            // linear interpolated bounce-back, Tao et al 2018
+            // f_streamed[i] stores negtive value of distance from interior grid point to boundary
+            float q = 1. + f_streamed[i] / length(c[i]);
+            float p_b_prev = 0.;
+            float3 u_b_prev = 0.;
+            GetVelocityAndDensity(f, u_b_prev, p_b_prev);
+            float feq_b = GetEquilibrium(float3(0., 0., 0.), p_b_prev, c[i], w[i]); // assume solid boundary velocity is 0
+            float feq_b_prev = GetEquilibrium(u_b_prev, p_b_prev, c[i], w[i]);
+            float f_b = 1. / (1. + q) * (feq_b + f[i] - feq_b_prev)
+                + q / (1. + q) * f[19 - i].x;
+            f_streamed[i] = f_b;
+            
+            // classical bounce-back
+            //f_streamed[i] = f_streamed[19 - i];
+        }
+    }
+    GetVelocityAndDensity(f_streamed, u, p);
+    if (texelZ == DEBUG_TEXTURE_SLICE)
+    {
+        DebugTexture[uint2(texelX, texelY)].xyz = float3(length(u), 0., p);
+        if (IsNaN(p) || IsNaN(length(u)) )
+        {
+            DebugTexture[uint2(texelX, texelY)].xyz = float3(0., 1., 0.);
+        }
+        if (p == 0. || length(u) == 0.)
+        {
+            DebugTexture[uint2(texelX, texelY)].xyz = float3(0., 0., 1.);
+        }
+
+    }
+    
+    // collision
+    float cs = 1. / sqrt(3.);
+    float feq[19];
+    for (int i = 0; i < 19; i++)
+    {
+        feq[i] = GetEquilibrium(u, p, c[i], w[i]);
+        f[i] = f_streamed[i] - (f_streamed[i] - feq[i]) / 0.8; // relaxation time tau = 0.1
+    }
+    StoreSimulationData3D(texelX, texelY, texelZ, f, boundary);
+}
