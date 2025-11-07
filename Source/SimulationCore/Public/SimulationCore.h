@@ -42,8 +42,15 @@ public:
 	virtual void ReleaseRHI() override;
 
 	static FSimulationShaderResource3D* Get();
+
+	struct SimulationParams {
+		float InitialVelocity;
+		float InitialDensity;
+		float RelaxationFactor;
+	} Params;
+
 private:
-	FSimulationShaderResource3D()
+	FSimulationShaderResource3D() : Params({0.0005, 0.0003, 0.8})
 	{
 		ENQUEUE_RENDER_COMMAND(FCreateSimShaderRes)([this](FRHICommandListImmediate& RHICmdList)
 			{

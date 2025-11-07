@@ -2,7 +2,10 @@
 
 #include "ShaderParameterStruct.h"
 
-BEGIN_SHADER_PARAMETER_STRUCT(FSimulationLBMShaderParameters, )
+BEGIN_SHADER_PARAMETER_STRUCT(FSimulationLBM3DShaderParameters, )
+	SHADER_PARAMETER(float, InitialVelocity)
+	SHADER_PARAMETER(float, InitialDensity)
+	SHADER_PARAMETER(float, RelaxationFactor)
 	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray)
 	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray2)
 	SHADER_PARAMETER_UAV(RWTexture2D<float4>, DebugTexture)
@@ -13,7 +16,7 @@ class FLBMInitialState3DShaderCS : public FGlobalShader
 public:
 	DECLARE_SHADER_TYPE(FLBMInitialState3DShaderCS, Global)
 	SHADER_USE_PARAMETER_STRUCT(FLBMInitialState3DShaderCS, FGlobalShader)
-		using FParameters = FSimulationLBMShaderParameters;
+		using FParameters = FSimulationLBM3DShaderParameters;
 };
 
 IMPLEMENT_SHADER_TYPE(, FLBMInitialState3DShaderCS, TEXT("/LBM/Shaders/SimulationCore3DCompute.usf"), TEXT("LBM_InitialState3D"), SF_Compute)
@@ -25,7 +28,7 @@ class FLBMStreaming3DShaderCS : public FGlobalShader
 public:
 	DECLARE_SHADER_TYPE(FLBMStreaming3DShaderCS, Global)
 	SHADER_USE_PARAMETER_STRUCT(FLBMStreaming3DShaderCS, FGlobalShader)
-		using FParameters = FSimulationLBMShaderParameters;
+		using FParameters = FSimulationLBM3DShaderParameters;
 };
 
 IMPLEMENT_SHADER_TYPE(, FLBMStreaming3DShaderCS, TEXT("/LBM/Shaders/SimulationCore3DCompute.usf"), TEXT("LBM_Streaming3D"), SF_Compute)
@@ -36,7 +39,7 @@ class FLBMCollision3DShaderCS : public FGlobalShader
 public:
 	DECLARE_SHADER_TYPE(FLBMCollision3DShaderCS, Global)
 	SHADER_USE_PARAMETER_STRUCT(FLBMCollision3DShaderCS, FGlobalShader)
-		using FParameters = FSimulationLBMShaderParameters;
+		using FParameters = FSimulationLBM3DShaderParameters;
 };
 
 IMPLEMENT_SHADER_TYPE(, FLBMCollision3DShaderCS, TEXT("/LBM/Shaders/SimulationCore3DCompute.usf"), TEXT("LBM_Collision3D"), SF_Compute)
@@ -100,6 +103,9 @@ void DispatchLBMInitalState3D_RenderThread(FRHICommandList& RHICmdList, FSimulat
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMInitialState3DShaderCS::FParameters Parameters{};
+		Parameters.InitialDensity = Resource->Params.InitialDensity;
+		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
+		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
 		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
@@ -116,6 +122,9 @@ void DispatchLBMStreaming3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMStreaming3DShaderCS::FParameters Parameters{};
+		Parameters.InitialDensity = Resource->Params.InitialDensity;
+		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
+		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
 		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
@@ -132,6 +141,9 @@ void DispatchLBMCollision3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMCollision3DShaderCS::FParameters Parameters{};
+		Parameters.InitialDensity = Resource->Params.InitialDensity;
+		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
+		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
 		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;

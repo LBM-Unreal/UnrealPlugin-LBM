@@ -122,9 +122,11 @@ public:
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM InitialState 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void LBMInitialState3D() {
-		ENQUEUE_RENDER_COMMAND(FLBMInitialState)([](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void LBMInitialState3D(float InitialVelocity, float InitialDensity) {
+		ENQUEUE_RENDER_COMMAND(FLBMInitialState)([InitialVelocity, InitialDensity](FRHICommandListImmediate& RHICmdList)
 			{
+				FSimulationShaderResource3D::Get()->Params.InitialVelocity = InitialVelocity;
+				FSimulationShaderResource3D::Get()->Params.InitialDensity = InitialDensity;
 				DispatchLBMInitalState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
 			});
 	}
@@ -138,9 +140,10 @@ public:
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Collision 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void LBMCollision3D() {
-		ENQUEUE_RENDER_COMMAND(FLBMCollision)([](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void LBMCollision3D(float RelaxationFactor) {
+		ENQUEUE_RENDER_COMMAND(FLBMCollision)([RelaxationFactor](FRHICommandListImmediate& RHICmdList)
 			{
+				FSimulationShaderResource3D::Get()->Params.RelaxationFactor = RelaxationFactor;
 				DispatchLBMCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
 			});
 	}

@@ -1,11 +1,8 @@
 // SimulationCoreCompute.usf
 #include "/Engine/Public/Platform.ush"
-
-float Scale;
-float Translate;
-
-RWStructuredBuffer<float> InputBuffer;
-RWStructuredBuffer<float> OutputBuffer;
+float InitialVelocity;
+float InitialDensity;
+float RelaxationFactor;
 RWTexture2DArray<float4> SimulationDataArray;
 RWTexture2DArray<float4> SimulationDataArray2;
 RWTexture2D<float4> DebugTexture;
@@ -244,7 +241,7 @@ void LBM_InitialState3D(
     
     
     float3 u = float3(0., 0., 0.);
-    float p = 0.0003;
+    float p = InitialDensity;
     float feq[19];
     
     float boundary = 0.;
@@ -274,10 +271,8 @@ void LBM_InitialState3D(
     if (texelX == 0)
     {
         boundary = 2.; // type 2 lattice with fixed velocity
-        float maxU = 0.0005;
-        u = float3(maxU, 0., 0.);
-        p = 0.0006;
-        //StoreBoundaryValues3D(texelX, texelY, texelZ, u, p);
+        u = float3(InitialVelocity, 0., 0.);
+        p = InitialDensity;
 
     }
     if (texelX == DIM_X - 1 && texelY > 0 && texelY < DIM_Y - 1 && texelZ > 0 && texelZ < DIM_Z - 1)
@@ -337,7 +332,6 @@ void LBM_Streaming3D(
     }
     ReadSimulationDataPreStream3D(texelX, texelY, texelZ, f_streamed);
     StoreSimulationData3D_2(texelX, texelY, texelZ, f_streamed, boundary);
-    //StoreSimulationData3D(texelX, texelY, texelZ, f_streamed, boundary);
 }
 
 bool IsNaN(float x)
@@ -511,7 +505,7 @@ void LBM_Collision3D(
     for (int i = 0; i < 19; i++)
     {
         feq[i] = GetEquilibrium(u, p, c[i], w[i]);
-        f[i] = f_streamed[i] - (f_streamed[i] - feq[i]) / 0.8; // relaxation time tau = 0.1
+        f[i] = f_streamed[i] - (f_streamed[i] - feq[i]) / RelaxationFactor; // relaxation time tau = 0.1
     }
     StoreSimulationData3D(texelX, texelY, texelZ, f, boundary);
 }
