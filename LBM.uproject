@@ -21,7 +21,7 @@
     },
     {
       "Name": "Voxelization",
-      "Type": "Editor",
+      "Type": "Runtime",
       "LoadingPhase": "Default"
     }
   ],

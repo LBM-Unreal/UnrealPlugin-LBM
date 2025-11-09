@@ -4,8 +4,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "ProceduralMeshComponent.h"
-#include "VoxelMeshAsset.h"
+
+#include "VoxelMesh.h"
 #include "VoxelMeshActor.generated.h"
+
 
 // Visualize a voxel mesh 
 UCLASS(BlueprintType)
@@ -22,13 +24,19 @@ protected:
 public:
     virtual void OnConstruction(const FTransform& Transform) override;
 
-    // Procedural mesh for rendering
-    UPROPERTY(VisibleAnywhere)
-	UProceduralMeshComponent* MeshComponent;
-
+    // The source static mesh to be voxelized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel")
-    TObjectPtr<UVoxelMeshAsset> VoxelMesh;
+    TObjectPtr<UStaticMesh> SourceMesh;
+
+    // Procedural mesh for visualizing VoxelMesh
+    TObjectPtr<UProceduralMeshComponent> MeshComponent;
+
+    // Voxel mesh data
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel")
+    FVoxelMesh VoxelMesh;
 
     void BuildMeshFromVoxels();
+
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 };
 

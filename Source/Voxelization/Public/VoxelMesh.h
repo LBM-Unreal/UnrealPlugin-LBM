@@ -12,24 +12,19 @@ struct FVoxelMesh
 {
     GENERATED_BODY()
 
-    // ------------------------------------------------------------------------
-    // 
-    // ------------------------------------------------------------------------
-
-    /** Number of voxels along each axis (resolution) */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel")
-    FIntVector GridDim = FIntVector::ZeroValue;
-
-    /** Size of one voxel in world units */
+	/** Size of one voxel in world units */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel")
     float VoxelSize = 1.0f;
 
+    /** Number of voxels along each axis (resolution) */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voxel")
+    FIntVector GridDim = FIntVector::ZeroValue;
     /** World-space origin (corner) of the grid */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voxel")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voxel")
     FVector3f Origin = FVector3f::ZeroVector;
 
     /** Voxel data */
-    UPROPERTY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voxel")
     TArray<uint8> Occupancy;
 
     // ------------------------------------------------------------------------
@@ -47,18 +42,18 @@ struct FVoxelMesh
         return GridDim.X * GridDim.Y * GridDim.Z;
     }
 
-    /** Allocate and zero the voxel buffer */
-    FORCEINLINE void Allocate()
+    /** Resize Occupancy to match GridDim */
+    FORCEINLINE void Reallocate()
     {
         Occupancy.SetNumZeroed(NumVoxels());
     }
 
-    /** Clear grid to a value (0 or 1) */
-    FORCEINLINE void Clear(uint8 Value = 0)
+    /** Clear grid to empty (0) */
+    FORCEINLINE void Clear()
     {
         for (uint8& V : Occupancy)
         {
-            V = Value;
+            V = 0;
         }
     }
 
