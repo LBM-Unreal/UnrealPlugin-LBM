@@ -6,6 +6,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "SimulationCore.h"
 #include "IRenderDocPlugin.h"
+#include "Engine/Texture2DArray.h"
 
 #include "SimulationBPModule.generated.h"
 
@@ -109,6 +110,21 @@ public:
 				FRHICopyTextureInfo CopyInfo;
 				CopyInfo.Size = { 128,128,1 };
 				RHICmdList.CopyTexture(FSimulationShaderResource3D::Get()->DebugTexture, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
+			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Debug Texture 3D Value 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void GetDebugTexture3DValue3D(UTexture* OutTexture)
+	{
+		FlushRenderingCommands();
+		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture](FRHICommandListImmediate& RHICmdList)
+			{
+				FRHICopyTextureInfo CopyInfo;
+				CopyInfo.Size = { 128,128,128 };
+				auto srcRHI = FSimulationShaderResource3D::Get()->DebugTexture3D;
+				auto dstRHI = OutTexture->GetResource()->GetTexture3DRHI();
+				RHICmdList.CopyTexture(srcRHI, dstRHI, CopyInfo);
 			});
 		FlushRenderingCommands();
 	}

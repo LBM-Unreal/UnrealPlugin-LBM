@@ -6,6 +6,7 @@ float RelaxationFactor;
 RWTexture2DArray<float4> SimulationDataArray;
 RWTexture2DArray<float4> SimulationDataArray2;
 RWTexture2D<float4> DebugTexture;
+RWTexture3D<half4> DebugTexture3D;
 
 #define DIM_X 128
 #define DIM_Y 128
@@ -497,6 +498,15 @@ void LBM_Collision3D(
             DebugTexture[uint2(texelX, texelY)].xyz = float3(0., 0., 1.);
         }
 
+    }
+    DebugTexture3D[uint3(texelX, texelY, texelZ)].xyz = float3(length(u), 0., p);
+    if (IsNaN(p) || IsNaN(length(u)))
+    {
+        DebugTexture3D[uint3(texelX, texelY, texelZ)].xyz = float3(0., 1., 0.);
+    }
+    if (p == 0. || length(u) == 0.)
+    {
+        DebugTexture3D[uint3(texelX, texelY, texelZ)].xyz = float3(0., 0., 1.);
     }
     
     // collision

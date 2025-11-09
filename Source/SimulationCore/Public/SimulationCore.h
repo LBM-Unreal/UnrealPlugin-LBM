@@ -32,7 +32,9 @@ class SIMULATIONCORE_API FSimulationShaderResource3D : public FRenderResource
 	static FSimulationShaderResource3D* GInstance;
 public:
 	FTextureRHIRef DebugTexture;
+	FTexture3DRHIRef DebugTexture3D;
 	FUnorderedAccessViewRHIRef DebugTextureUAV;
+	FUnorderedAccessViewRHIRef DebugTexture3DUAV;
 	FTexture2DArrayRHIRef SimulationDataArray;
 	FUnorderedAccessViewRHIRef SimulationDataArrayUAV;
 	FTexture2DArrayRHIRef SimulationDataArray2;
