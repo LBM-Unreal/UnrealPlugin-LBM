@@ -2,7 +2,6 @@
 #include "StaticMeshResources.h"
 #include "Voxelization.h"
 #include "Math/UnrealMathUtility.h"
-#pragma UE_DISABLE_OPTIMIZATION
 
 // Helper function for voxel triangle intersection 
 bool TriangleAABBTest(FVector3f V0, FVector3f V1, FVector3f V2, FVector3f BoxCenter, FVector3f BoxHalfWidth);
@@ -32,6 +31,7 @@ void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
     GridDim.Y = 2 * FMath::CeilToInt(meshBoundExtent.Y / VoxelSize);
     GridDim.Z = 2 * FMath::CeilToInt(meshBoundExtent.Z / VoxelSize);
     Reallocate();
+    Clear();
 
     // Set VoxelMesh's origin to the mesh bound min
     Origin = FVector3f(meshBoundCenter - FVector(GridDim) * 0.5f * VoxelSize);
@@ -49,16 +49,16 @@ void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
         FVector3f V2 = VB.VertexPosition(IB.GetIndex(I + 2));
 
         // Transform to voxel space (0..GridSize)
-        V0 = (V0 - Origin) / VoxelSize;
-        V1 = (V1 - Origin) / VoxelSize;
-        V2 = (V2 - Origin) / VoxelSize;
+        FVector3f V0VoxelSpace = (V0 - Origin) / VoxelSize;
+        FVector3f V1VoxelSpace = (V1 - Origin) / VoxelSize;
+        FVector3f V2VoxelSpace = (V2 - Origin) / VoxelSize;
 
         // Compute triangle bounds in voxel space for intersection efficiency
         FIntVector MaxGridBound{};
     	FIntVector MinGridBound{};
 
-        FVector3f MinV = FVector3f::Min3(V0, V1, V2);
-        FVector3f MaxV = FVector3f::Max3(V0, V1, V2);
+        FVector3f MinV = FVector3f::Min3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
+        FVector3f MaxV = FVector3f::Max3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
 
         MinGridBound.X = FMath::FloorToInt(MinV.X);
         MinGridBound.Y = FMath::FloorToInt(MinV.Y);
@@ -76,7 +76,7 @@ void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
                 for (int X = MinGridBound.X; X <= MaxGridBound.X; ++X)
                 {
                     const FVector3f VoxelHalfSize = FVector3f(VoxelSize * 0.5f);
-                	FVector3f VoxelCenter = FVector3f(Origin) + VoxelSize * FVector3f(X, Y, Z) + VoxelHalfSize;
+                	FVector3f VoxelCenter = Origin + VoxelSize * FVector3f(X, Y, Z) + VoxelHalfSize;
 
                     if (TriangleAABBTest(V0, V1, V2, VoxelCenter, VoxelHalfSize))
                     {
@@ -118,7 +118,6 @@ bool TriangleAABBTest(FVector3f V0, FVector3f V1, FVector3f V2, FVector3f BoxCen
     };
     FVector3f BoxMinWithTriangleNormal = -BoxMaxWithTriangleNormal;
 
-
     float BoxMaxDistToTriangle = FVector3f::DotProduct(BoxMaxWithTriangleNormal - V0, TriangleNormal);
     float BoxMinDistToTriangle = FVector3f::DotProduct(BoxMinWithTriangleNormal - V0, TriangleNormal);
 
@@ -127,25 +126,20 @@ bool TriangleAABBTest(FVector3f V0, FVector3f V1, FVector3f V2, FVector3f BoxCen
         return false;
     }
 
-    /* Test the 9 cross products of triangle edges and aabb axes */
-    /*FVector3f E0F0 = FVector3f::CrossProduct(E0, F0);
-    FVector3f E0F1 = FVector3f::CrossProduct(E0, F1);
-    FVector3f E0F2 = FVector3f::CrossProduct(E0, F2);
-    FVector3f E1F0 = FVector3f::CrossProduct(E1, F0);
-    FVector3f E1F1 = FVector3f::CrossProduct(E1, F1);
-    FVector3f E1F2 = FVector3f::CrossProduct(E1, F2);
-    FVector3f E2F0 = FVector3f::CrossProduct(E2, F0);
-    FVector3f E2F1 = FVector3f::CrossProduct(E2, F1);
-    FVector3f E2F2 = FVector3f::CrossProduct(E2, F2);
-
-    TArray<FVector3f> CrossDir {
-        E0F0, E0F1, E0F2,
-        E1F0, E1F1, E1F2,
-        E2F0, E2F1, E2F2
+    /* Test the 9 cross products of triangle edges and aabb axes (separating axes) */
+    TArray<FVector3f> SeparatingAxes {
+        FVector3f::CrossProduct(E0, F0),
+        FVector3f::CrossProduct(E0, F1),
+        FVector3f::CrossProduct(E0, F2),
+        FVector3f::CrossProduct(E1, F0),
+        FVector3f::CrossProduct(E1, F1),
+        FVector3f::CrossProduct(E1, F2),
+        FVector3f::CrossProduct(E2, F0),
+        FVector3f::CrossProduct(E2, F1),
+        FVector3f::CrossProduct(E2, F2),
     };
 
-
-    for (const FVector3f& Axis : CrossDir)
+    for (const FVector3f& Axis : SeparatingAxes)
     {
         float P0 = FVector3f::DotProduct(V0, Axis);
         float P1 = FVector3f::DotProduct(V1, Axis);
@@ -155,8 +149,7 @@ bool TriangleAABBTest(FVector3f V0, FVector3f V1, FVector3f V2, FVector3f BoxCen
         {
             return false;
         }
-    }*/
+    }
 
     return true;
 }
-#pragma UE_ENABLE_OPTIMIZATION
