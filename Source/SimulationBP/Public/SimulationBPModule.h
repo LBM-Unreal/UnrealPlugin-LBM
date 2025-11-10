@@ -81,7 +81,7 @@ public:
 	static SIMULATIONBP_API void LBMInitialState() {
 		ENQUEUE_RENDER_COMMAND(FLBMInitialState)([](FRHICommandListImmediate& RHICmdList)
 			{
-				DispatchLBMInitalState_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+				DispatchLBMInitalState_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
 			});
 	}
 
@@ -89,7 +89,7 @@ public:
 	static SIMULATIONBP_API void LBMStreaming() {
 		ENQUEUE_RENDER_COMMAND(FLBMStreaming)([](FRHICommandListImmediate& RHICmdList)
 			{
-				DispatchLBMStreaming_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+				DispatchLBMStreaming_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
 			});
 	}
 
@@ -97,7 +97,7 @@ public:
 	static SIMULATIONBP_API void LBMCollision() {
 		ENQUEUE_RENDER_COMMAND(FLBMCollision)([](FRHICommandListImmediate& RHICmdList)
 			{
-				DispatchLBMCollision_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+				DispatchLBMCollision_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
 			});
 	}
 
@@ -108,7 +108,7 @@ public:
 		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture](FRHICommandListImmediate& RHICmdList)
 			{
 				FRHICopyTextureInfo CopyInfo;
-				CopyInfo.Size = { 128,128,1 };
+				CopyInfo.Size = { FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[0]),FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[1]),1 };
 				RHICmdList.CopyTexture(FSimulationShaderResource3D::Get()->DebugTexture, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
 			});
 		FlushRenderingCommands();
@@ -130,9 +130,11 @@ public:
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Update Resource 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void UpdateResource3D() {
-		ENQUEUE_RENDER_COMMAND(FUpdateResource)([](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void UpdateResource3D(FVector3f TextureSize) {
+		ENQUEUE_RENDER_COMMAND(FUpdateResource)([TextureSize](FRHICommandListImmediate& RHICmdList)
 			{
+				FSimulationShaderResource3D::Get()->TextureSize = FIntVector3(TextureSize);
+				FSimulationShaderResource3D::Get()->Params.SimDimensions = FIntVector3(TextureSize);
 				FSimulationShaderResource3D::Get()->UpdateRHI(RHICmdList);
 			});
 	}
@@ -143,24 +145,26 @@ public:
 			{
 				FSimulationShaderResource3D::Get()->Params.InitialVelocity = InitialVelocity;
 				FSimulationShaderResource3D::Get()->Params.InitialDensity = InitialDensity;
-				DispatchLBMInitalState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
+				DispatchLBMInitalState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 64, 64, 32);
 			});
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Streaming 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void LBMStreaming3D() {
-		ENQUEUE_RENDER_COMMAND(FLBMStreaming)([](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void LBMStreaming3D(int debugTextureSlice) {
+		ENQUEUE_RENDER_COMMAND(FLBMStreaming)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
 			{
-				DispatchLBMStreaming3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
+				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
+				DispatchLBMStreaming3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 64, 64, 32);
 			});
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Collision 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void LBMCollision3D(float RelaxationFactor) {
-		ENQUEUE_RENDER_COMMAND(FLBMCollision)([RelaxationFactor](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void LBMCollision3D(float RelaxationFactor, int debugTextureSlice) {
+		ENQUEUE_RENDER_COMMAND(FLBMCollision)([RelaxationFactor, debugTextureSlice](FRHICommandListImmediate& RHICmdList)
 			{
+				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
 				FSimulationShaderResource3D::Get()->Params.RelaxationFactor = RelaxationFactor;
-				DispatchLBMCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 16, 16, 16);
+				DispatchLBMCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 64, 64, 32);
 			});
 	}
 };

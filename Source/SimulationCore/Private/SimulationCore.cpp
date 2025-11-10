@@ -10,6 +10,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSimulationCoreShaderParameters, )
 	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray)
 	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray2)
 	SHADER_PARAMETER_UAV(RWTexture2D<float4>, DebugTexture)
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<int>, DebugBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
 
@@ -17,6 +18,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSimulationLBMShaderParameters, )
 	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray)
 	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray2)
 	SHADER_PARAMETER_UAV(RWTexture2D<float4>, DebugTexture)
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<int>, DebugBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
 
@@ -88,8 +90,8 @@ void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 	InputBuffer.Initialize(RHICmdList, TEXT("InputBuffer"), sizeof(float), 1);
 	OutputBuffer.Initialize(RHICmdList, TEXT("OutputBuffer"), sizeof(float), 1);
 	DebugTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_DebugTexture")));
-
-	Desc.ArraySize = 9;
+	DebugBuffer.Initialize(RHICmdList, TEXT("LBM_DebugBuffer"), sizeof(int), 256*256*10);
+	Desc.ArraySize = 10;
 	Desc.SetDimension(ETextureDimension::Texture2DArray);
 	SimulationDataArray = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_SimulationDataArray")));
 	SimulationDataArray2 = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_SimulationDataArray2")));
@@ -100,14 +102,15 @@ void FSimulationShaderResource::InitRHI(FRHICommandListBase& RHICmdList)
 		.SetDimensionFromTexture(DebugTexture)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 1));
+	
 	SimulationDataArrayUAV = RHICmdList.CreateUnorderedAccessView(SimulationDataArray, FRHIViewDesc::CreateTextureUAV()
 		.SetDimensionFromTexture(SimulationDataArray)
 		.SetMipLevel(0)
-		.SetArrayRange(0, 9));
+		.SetArrayRange(0, 10));
 	SimulationDataArray2UAV = RHICmdList.CreateUnorderedAccessView(SimulationDataArray2, FRHIViewDesc::CreateTextureUAV()
 		.SetDimensionFromTexture(SimulationDataArray2)
 		.SetMipLevel(0)
-		.SetArrayRange(0, 9));
+		.SetArrayRange(0, 10));
 
 
 }
@@ -142,6 +145,7 @@ void DispatchExampleComputeShader_RenderThread(FRHICommandList& RHICmdList, FSim
 		Parameters.OutputBuffer = Resource->OutputBuffer.UAV;
 		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 
 		// 传入参数
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
@@ -164,6 +168,7 @@ void DispatchLBMInitalState_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
@@ -180,6 +185,7 @@ void DispatchLBMStreaming_RenderThread(FRHICommandList& RHICmdList, FSimulationS
 		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
@@ -196,6 +202,7 @@ void DispatchLBMCollision_RenderThread(FRHICommandList& RHICmdList, FSimulationS
 		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
 		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);

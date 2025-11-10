@@ -6,10 +6,11 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSimulationLBM3DShaderParameters, )
 	SHADER_PARAMETER(float, InitialVelocity)
 	SHADER_PARAMETER(float, InitialDensity)
 	SHADER_PARAMETER(float, RelaxationFactor)
-	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray)
-	SHADER_PARAMETER_UAV(RWTexture2DArray<float4>, SimulationDataArray2)
+	SHADER_PARAMETER(FIntVector3, SimDimension)
+	SHADER_PARAMETER(int, DebugTextureSlice)
 	SHADER_PARAMETER_UAV(RWTexture2D<float4>, DebugTexture)
 	SHADER_PARAMETER_UAV(RWTexture3D<half4>, DebugTexture3D)
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<int>, DebugBuffer)
 END_SHADER_PARAMETER_STRUCT()
 
 class FLBMInitialState3DShaderCS : public FGlobalShader
@@ -61,20 +62,15 @@ FSimulationShaderResource3D* FSimulationShaderResource3D::Get()
 void FSimulationShaderResource3D::InitRHI(FRHICommandListBase& RHICmdList)
 {
 	FRHITextureCreateDesc Desc =
-		FRHITextureCreateDesc::Create2D(TEXT("LBM_Textures"), 128, 128, PF_A32B32G32R32F)
+		FRHITextureCreateDesc::Create2D(TEXT("LBM_Textures"), TextureSize[0], TextureSize[1], PF_A32B32G32R32F)
 		.SetFlags(ETextureCreateFlags::UAV).SetClearValue(FClearValueBinding(FLinearColor(0.f, 0.f, 0.f, 0.f)));
 	DebugTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_DebugTexture")));
 
 	FRHITextureCreateDesc Desc3D =
-		FRHITextureCreateDesc::Create3D(TEXT("LBM_Textures"), 128, 128, 128, PF_A16B16G16R16)
+		FRHITextureCreateDesc::Create3D(TEXT("LBM_Textures"), TextureSize[0], TextureSize[1], TextureSize[2], PF_A16B16G16R16)
 		.SetFlags(ETextureCreateFlags::UAV).SetClearValue(FClearValueBinding(FLinearColor(0.f, 0.f, 0.f, 0.f)));
 	DebugTexture3D = RHICmdList.CreateTexture(Desc3D.SetDebugName(TEXT("LBM_DebugTexture3D")));
-
-	Desc.ArraySize = 5*128;
-	Desc.SetDimension(ETextureDimension::Texture2DArray);
-	SimulationDataArray = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_SimulationDataArray")));
-	SimulationDataArray2 = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_SimulationDataArray2")));
-
+	DebugTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_DebugTexture")));	
 	FRHIViewDesc ViewDesc;
 	
 	DebugTextureUAV = RHICmdList.CreateUnorderedAccessView(DebugTexture, FRHIViewDesc::CreateTextureUAV()
@@ -85,14 +81,7 @@ void FSimulationShaderResource3D::InitRHI(FRHICommandListBase& RHICmdList)
 		.SetDimensionFromTexture(DebugTexture3D)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 1));
-	SimulationDataArrayUAV = RHICmdList.CreateUnorderedAccessView(SimulationDataArray, FRHIViewDesc::CreateTextureUAV()
-		.SetDimensionFromTexture(SimulationDataArray)
-		.SetMipLevel(0)
-		.SetArrayRange(0, 5 * 128));
-	SimulationDataArray2UAV = RHICmdList.CreateUnorderedAccessView(SimulationDataArray2, FRHIViewDesc::CreateTextureUAV()
-		.SetDimensionFromTexture(SimulationDataArray2)
-		.SetMipLevel(0)
-		.SetArrayRange(0, 5 * 128));
+	DebugBuffer.Initialize(RHICmdList, TEXT("LBM_DebugBuffer"), sizeof(int), TextureSize[0] * TextureSize[1] * TextureSize[2] * 20);
 }
 
 // Buffer释放函数
@@ -100,13 +89,10 @@ void FSimulationShaderResource3D::ReleaseRHI()
 {
 	DebugTextureUAV.SafeRelease();
 	DebugTexture3DUAV.SafeRelease();
-	SimulationDataArrayUAV.SafeRelease();
-	SimulationDataArray2UAV.SafeRelease();
-
 	DebugTexture.SafeRelease();
 	DebugTexture3D.SafeRelease();
-	SimulationDataArray.SafeRelease();
-	SimulationDataArray2.SafeRelease();
+	DebugTexture.SafeRelease();
+	DebugBuffer.Release();
 }
 
 void DispatchLBMInitalState3D_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource3D* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
@@ -118,10 +104,11 @@ void DispatchLBMInitalState3D_RenderThread(FRHICommandList& RHICmdList, FSimulat
 		Parameters.InitialDensity = Resource->Params.InitialDensity;
 		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
 		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
-		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
-		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
+		Parameters.SimDimension = Resource->Params.SimDimensions;
+		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
@@ -138,10 +125,11 @@ void DispatchLBMStreaming3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 		Parameters.InitialDensity = Resource->Params.InitialDensity;
 		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
 		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
-		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
-		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
+		Parameters.SimDimension = Resource->Params.SimDimensions;
+		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
@@ -158,10 +146,11 @@ void DispatchLBMCollision3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 		Parameters.InitialDensity = Resource->Params.InitialDensity;
 		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
 		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
-		Parameters.SimulationDataArray = Resource->SimulationDataArrayUAV;
-		Parameters.SimulationDataArray2 = Resource->SimulationDataArray2UAV;
+		Parameters.SimDimension = Resource->Params.SimDimensions;
+		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);

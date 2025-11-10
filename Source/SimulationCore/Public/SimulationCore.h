@@ -12,6 +12,7 @@ public:
 	FUnorderedAccessViewRHIRef SimulationDataArrayUAV;
 	FTexture2DArrayRHIRef SimulationDataArray2;
 	FUnorderedAccessViewRHIRef SimulationDataArray2UAV;
+	FRWBufferStructured DebugBuffer;
 	virtual void InitRHI(FRHICommandListBase& RHICmdList) override;
 
 	virtual void ReleaseRHI() override; 
@@ -33,12 +34,10 @@ class SIMULATIONCORE_API FSimulationShaderResource3D : public FRenderResource
 public:
 	FTextureRHIRef DebugTexture;
 	FTexture3DRHIRef DebugTexture3D;
-	FUnorderedAccessViewRHIRef DebugTextureUAV;
 	FUnorderedAccessViewRHIRef DebugTexture3DUAV;
-	FTexture2DArrayRHIRef SimulationDataArray;
-	FUnorderedAccessViewRHIRef SimulationDataArrayUAV;
-	FTexture2DArrayRHIRef SimulationDataArray2;
-	FUnorderedAccessViewRHIRef SimulationDataArray2UAV;
+	FRWBufferStructured DebugBuffer;
+	FUnorderedAccessViewRHIRef DebugTextureUAV;
+	FIntVector3 TextureSize;
 	virtual void InitRHI(FRHICommandListBase& RHICmdList) override;
 
 	virtual void ReleaseRHI() override;
@@ -49,10 +48,12 @@ public:
 		float InitialVelocity;
 		float InitialDensity;
 		float RelaxationFactor;
+		int DebugTextureSlice;
+		FIntVector3 SimDimensions;
 	} Params;
 
 private:
-	FSimulationShaderResource3D() : Params({0.0005, 0.0003, 0.8})
+	FSimulationShaderResource3D() : TextureSize({ 256, 256, 256 }), Params({ 0.0005, 0.0003, 0.8, 16, FIntVector3(256, 256, 256) })
 	{
 		ENQUEUE_RENDER_COMMAND(FCreateSimShaderRes)([this](FRHICommandListImmediate& RHICmdList)
 			{

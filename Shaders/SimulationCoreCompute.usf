@@ -7,8 +7,8 @@ float Translate;
 RWStructuredBuffer<float> InputBuffer;
 RWStructuredBuffer<float> OutputBuffer;
 RWTexture2DArray<float4> SimulationDataArray;
-RWTexture2DArray<float4> SimulationDataArray2;
 RWTexture2D<float4> DebugTexture;
+RWStructuredBuffer<int> DebugBuffer;
 
 ///////////////
 //
@@ -20,84 +20,33 @@ RWTexture2D<float4> DebugTexture;
 //
 ///////////////
 
-void StoreSimulationData2D(in uint texelX, in uint texelY, in float f[9], in float boundary)
+void StoreSimulationData2D(in uint texelX, in uint texelY, in float f[9], in int boundary)
 {
-    SimulationDataArray[uint3(texelX, texelY, 0)] = float4(f[0], f[1], f[2], f[3]);
-    SimulationDataArray[uint3(texelX, texelY, 1)] = float4(f[4], f[5], f[6], f[7]);
-    SimulationDataArray[uint3(texelX, texelY, 2)] = float4(f[8], boundary, 0., 0.);
+    for (int i = 0; i < 9; i++)
+    {
+        DebugBuffer[i + 10 * texelX + 10 * 256 * texelY] = asint(f[i]);
+    }
+    DebugBuffer[9 + 10 * texelX + 10 * 256 * texelY] = boundary;
 }
 
-void StoreSimulationData2D_2(in uint texelX, in uint texelY, in float f[9], in float boundary)
+void StoreSimulationDataIndex2D(in uint texelX, in uint texelY, in int index, in float f_i)
 {
-    SimulationDataArray2[uint3(texelX, texelY, 0)] = float4(f[0], f[1], f[2], f[3]);
-    SimulationDataArray2[uint3(texelX, texelY, 1)] = float4(f[4], f[5], f[6], f[7]);
-    SimulationDataArray2[uint3(texelX, texelY, 2)] = float4(f[8], boundary, 0., 0.);
+    int _;
+    InterlockedExchange(DebugBuffer[index + 10 * texelX + 10 * 256 * texelY], asint(f_i), _);
 }
 
-void ReadSimulationData2D(in uint texelX, in uint texelY, out float f[9], out float boundary)
+void ReadSimulationDataIndex2D(in uint texelX, in uint texelY, in int index, out float f_i)
 {
-    float4 f0_3 = SimulationDataArray[uint3(texelX, texelY, 0)];
-    float4 f4_7 = SimulationDataArray[uint3(texelX, texelY, 1)];
-    float4 f8_ = SimulationDataArray[uint3(texelX, texelY, 2)];
-    f[0] = f0_3.x;
-    f[1] = f0_3.y;
-    f[2] = f0_3.z;
-    f[3] = f0_3.w;
-    f[4] = f4_7.x;
-    f[5] = f4_7.y;
-    f[6] = f4_7.z;
-    f[7] = f4_7.w;
-    f[8] = f8_.x;
-    boundary = f8_.y;
+    f_i = asfloat(DebugBuffer[index + 10 * texelX + 10 * 256 * texelY]);
 }
 
-void ReadBoundaryValues2D(in uint texelX, in uint texelY, out float2 u, out float p)
+void ReadSimulationData2D(in uint texelX, in uint texelY, out float f[9], out int boundary)
 {
-    u = SimulationDataArray[uint3(texelX, texelY, 3)].xy;
-    p = SimulationDataArray[uint3(texelX, texelY, 3)].z;
-}
-
-void StoreBoundaryValues2D(in uint texelX, in uint texelY, in float2 u, in float p)
-{
-    SimulationDataArray[uint3(texelX, texelY, 3)].xy = u;
-    SimulationDataArray[uint3(texelX, texelY, 3)].z = p;
-}
-
-void ReadSimulationDataPreStream2D(in uint texelX, in uint texelY, out float f[9])
-{
-    /*
-    
-    1 2 3 
-    4 0 5
-    6 7 8
-    
-    */
-    f[0] = SimulationDataArray[uint3(texelX, texelY, 0)].x;
-    f[1] = SimulationDataArray[uint3(texelX + 1, texelY + 1, 0)].y;
-    f[2] = SimulationDataArray[uint3(texelX, texelY + 1, 0)].z;
-    f[3] = SimulationDataArray[uint3(texelX - 1, texelY + 1, 0)].w;
-    f[4] = SimulationDataArray[uint3(texelX + 1, texelY, 1)].x;
-    f[5] = SimulationDataArray[uint3(texelX - 1, texelY, 1)].y;
-    f[6] = SimulationDataArray[uint3(texelX + 1, texelY - 1, 1)].z;
-    f[7] = SimulationDataArray[uint3(texelX, texelY - 1, 1)].w;
-    f[8] = SimulationDataArray[uint3(texelX - 1, texelY - 1, 2)].x;
-}
-
-void ReadSimulationData2D_2(in uint texelX, in uint texelY, out float f[9], out float boundary)
-{
-    float4 f0_3 = SimulationDataArray2[uint3(texelX, texelY, 0)];
-    float4 f4_7 = SimulationDataArray2[uint3(texelX, texelY, 1)];
-    float4 f8_ = SimulationDataArray2[uint3(texelX, texelY, 2)];
-    f[0] = f0_3.x;
-    f[1] = f0_3.y;
-    f[2] = f0_3.z;
-    f[3] = f0_3.w;
-    f[4] = f4_7.x;
-    f[5] = f4_7.y;
-    f[6] = f4_7.z;
-    f[7] = f4_7.w;
-    f[8] = f8_.x;
-    boundary = f8_.y;
+    for (int i = 0; i < 9; i++)
+    {
+        f[i] = asfloat(DebugBuffer[i + 10 * texelX + 10 * 256 * texelY]);
+    }
+    boundary = DebugBuffer[9 + 10 * texelX + 10 * 256 * texelY];
 }
 
 float sphere(float2 p, float2 center, float radius)
@@ -123,7 +72,6 @@ float2 GetBoundaryVelocity(uint texelX, uint texelY)
 {
     float maxU = 0.05;
     return maxU;
-    //return float2(0., maxU * (-pow(texelY - 128., 2.) / 128. / 128. + 1.));
 }
 
 
@@ -169,16 +117,16 @@ void LBM_InitialState(
     float cs = 1. / sqrt(3.);
     
     
-    float2 u = float2(0., 0.);
+    float2 u = float2(0.001, 0.);
     float p = 0.03;
     float feq[9];
     
-    float boundary = 0.;
-    
+    int boundary = 0;
+    float f_fake = -1. * (texelX + 256 * texelY);
     // process all boundary settings
     if (texelX <= 0 || texelX >= 255 || texelY <=0 || texelY >= 255)
     {
-        boundary = 1.; // type 1 lattice
+        boundary = 1; // type 1 lattice
         /*
     
         1 2 3 
@@ -186,16 +134,16 @@ void LBM_InitialState(
         6 7 8
     
         */
-        feq[0] = -1.; // pos 0 does not matter, will be overwriten later
+        feq[0] = f_fake; // pos 0 does not matter, will be overwriten later
         // below is a generalize of out boundary in x and y
-        feq[1] = -0.7071;
-        feq[2] = -0.5;
-        feq[3] = -0.7071;
-        feq[4] = -0.5;
-        feq[5] = -0.5;
-        feq[6] = -0.7071;
-        feq[7] = -0.5;
-        feq[8] = -0.7071;
+        feq[1] = f_fake;
+        feq[2] = f_fake;
+        feq[3] = f_fake;
+        feq[4] = f_fake;
+        feq[5] = f_fake;
+        feq[6] = f_fake;
+        feq[7] = f_fake;
+        feq[8] = f_fake;
     }
     // inside solid boundary
     float2 center = float2(128., 128.);
@@ -203,7 +151,7 @@ void LBM_InitialState(
     float d = sphere(float2(texelX, texelY), center, radius);
     if (d < 0.)
     {
-        boundary = 1.;
+        boundary = 1;
         for (int i = 0; i < 9; i++)
         {
             feq[i] = d;
@@ -211,24 +159,17 @@ void LBM_InitialState(
     }
     if (texelX == 0)
     {
-        boundary = 2.; // type 2 lattice with fixed velocity
-        u = GetBoundaryVelocity(texelX, texelY);
-        p = 0.1;
-        StoreBoundaryValues2D(texelX, texelY, u, p);
+        boundary = 2; // type 2 lattice with fixed velocity
+        u = float2(0.0, 0.05);
+        p = 0.06;
 
     }
     if (texelX == 255 && texelY > 0 &&  texelY < 255)
     {
-        boundary = 3.;
+        boundary = 3;
     }
-    /*if (texelX == 254)
-    {
-        boundary = 3.; // type 3 lattice with fixed velocity
-        //p = 0.;
-        StoreBoundaryValues2D(texelX, texelY, u, p);
-    }*/
     
-    if (boundary == 0. || boundary == 2. || boundary == 3.)
+    if (boundary == 0 || boundary == 2 || boundary == 3)
     {
         for (int i = 0; i < 9; i++)
         {
@@ -238,9 +179,9 @@ void LBM_InitialState(
     
     StoreSimulationData2D(texelX, texelY, feq, boundary);
     
-    DebugTexture[uint2(texelX, texelY)].x = (float) texelX / 256.;
-    DebugTexture[uint2(texelX, texelY)].y = length(u);
-    DebugTexture[uint2(texelX, texelY)].z = p;
+    DebugTexture[uint2(texelX, texelY)].x = 0.;
+    DebugTexture[uint2(texelX, texelY)].y = 0.;
+    DebugTexture[uint2(texelX, texelY)].z = 0.;
 }
 
 [numthreads(16, 16, 1)]
@@ -257,20 +198,36 @@ void LBM_Streaming(
     6 7 8
     
     */
-    uint texelX = DispatchThreadId.x;
-    uint texelY = DispatchThreadId.y;
-    float f[9];
-    float f_streamed[9];
-    float boundary;
-    
-    ReadSimulationData2D(texelX, texelY, f, boundary);
-    
-    if (boundary >= 1.) // no simulation inside solid 
+    int texelX = (int)DispatchThreadId.x;
+    int texelY = (int) DispatchThreadId.y;
+    int2 c[9] =
     {
-        return;
+        int2(0, 0),
+        int2(-1, -1),
+        int2(0, -1),
+        int2(1, -1),
+        int2(-1, 0),
+        int2(1, 0),
+        int2(-1, 1),
+        int2(0, 1),
+        int2(1, 1),
+    };
+    for (int i = 5; i < 9; i++)
+    {
+        float f_1, f_2;
+        if (texelX + c[i].x < 0 || texelX + c[i].x > 255)
+        {
+            continue;
+        }
+        if (texelY + c[i].y < 0 || texelY + c[i].y > 255)
+        {
+            continue;
+        }
+        ReadSimulationDataIndex2D(texelX, texelY, 9-i, f_1);
+        ReadSimulationDataIndex2D(texelX + c[i].x, texelY + c[i].y, i, f_2);
+        StoreSimulationDataIndex2D(texelX, texelY, 9-i, f_2);
+        StoreSimulationDataIndex2D(texelX + c[i].x, texelY + c[i].y, i, f_1);
     }
-    ReadSimulationDataPreStream2D(texelX, texelY, f_streamed);
-    StoreSimulationData2D_2(texelX, texelY, f_streamed, boundary);
 }
 
 bool IsNaN(float x)
@@ -354,23 +311,61 @@ void LBM_Collision(
     
     // lbm distribution functions
     float f[9];
-    float f_streamed[9];
-    float boundary = 0;
+    int boundary = 0;
     
     ReadSimulationData2D(texelX, texelY, f, boundary);
-    if (boundary == 3.)
+    float f_fake = -1. * (texelX + 256 * texelY);
+    if (boundary == 1)
     {
-        float f_left[9];
-        float boundary_left;
-        ReadSimulationData2D(texelX - 1, texelY, f_left, boundary_left);
-        StoreSimulationData2D(texelX, texelY, f_left, boundary);
+        f[0] = f_fake;
+        f[1] = f_fake;
+        f[2] = f_fake;
+        f[3] = f_fake;
+        f[4] = f_fake;
+        f[5] = f_fake;
+        f[6] = f_fake;
+        f[7] = f_fake;
+        f[8] = f_fake;
     }
-    if (boundary>=1.) // no simulation inside solid 
+    if (boundary == 2)
     {
-        DebugTexture[uint2(texelX, texelY)] = float4(1., 0., 1., 1.);
+        float2 u = float2(0.5, 0.);
+        float p = 0.06;
+        u = float2(0.0, 0.05);
+        p = 0.06;
+        for (int i = 0; i < 9; i++)
+        {
+            f[i] = w[i] * p * (1. + 3. * dot(c[i], u) + 4.5 * pow(dot(c[i], u), 2.) - 1.5 * dot(u, u));
+        }
+    }
+    if (boundary == 3 && texelY==1)
+    {
+        float boundary_left;
+        ReadSimulationData2D(texelX - 1, texelY + 1, f, boundary_left);
+    }
+    else if (boundary == 3 && texelY == 254)
+    {
+        float boundary_left;
+        ReadSimulationData2D(texelX - 1, texelY - 1, f, boundary_left);
+    }
+    else if (boundary == 3)
+    {
+        float boundary_left;
+        ReadSimulationData2D(texelX - 1, texelY, f, boundary_left);
+    }
+    if (boundary>=1) // no simulation inside solid 
+    {
+        DebugTexture[uint2(texelX, texelY)] = float4(1., 1., 1., 1.);
+        for (int i = 1; i < 5; i++)
+        {
+            float temp = f[i];
+            f[i] = f[9 - i];
+            f[9 - i] = temp;
+        }
+        StoreSimulationData2D(texelX, texelY, f, boundary);
         return;
     }
-    ReadSimulationData2D_2(texelX, texelY, f_streamed, boundary);
+    //ReadSimulationData2D_2(texelX, texelY, f_streamed, boundary);
     
     
     float p = 0.;
@@ -378,13 +373,13 @@ void LBM_Collision(
     
     // boundary treatment
     // bounce back
-    for (int i = 0; i < 9; i++)
+    for (int i = 1; i < 9; i++)
     {
-        if (f_streamed[i] < 0.)
+        if (f[i] < 0. && f[9-i]<0.)
         {
             // linear interpolated bounce-back, Tao et al 2018
             // f_streamed[i] stores negtive value of distance from interior grid point to boundary
-            float q = 1. + f_streamed[i] / length(c[i]);
+            /*float q = 1. + f_streamed[i] / length(c[i]);
             float p_b_prev = 0.;
             float2 u_b_prev = 0.;
             GetVelocityAndDensity(f, u_b_prev, p_b_prev);
@@ -393,17 +388,23 @@ void LBM_Collision(
             float f_b = 1. / (1. + q) * (feq_b + f[i] - feq_b_prev)
                 + q / (1. + q) * f[9 - i].x;
             f_streamed[i] = f_b;
-            
+            */
             // classical bounce-back
-            // f_streamed[i] = f_streamed[9 - i];
+            f[i] = 0.;
+            f[9 - i] = 0.;
+            DebugTexture[uint2(texelX, texelY)].xyz = float3(0.,1.,0.);
+        }
+        else if(f[i]<0.)
+        {
+            f[i] = f[9 - i];
+            DebugTexture[uint2(texelX, texelY)].xyz = float3(1., 0., 0.);
         }
     }
-    GetVelocityAndDensity(f_streamed, u, p);
-    DebugTexture[uint2(texelX, texelY)].x = length(u);
-    DebugTexture[uint2(texelX, texelY)].z = p;
-    if (IsNaN(p) || IsNaN(length(u)))
+    GetVelocityAndDensity(f, u, p);
+    DebugTexture[uint2(texelX, texelY)].xyz = float3(length(u), 0., p);
+    if (IsNaN(p) || IsNaN(length(u)) || p == 0. || length(u)==0.)
     {
-        DebugTexture[uint2(texelX, texelY)].y = 0.5;
+        DebugTexture[uint2(texelX, texelY)].xyz = float3(1.,1.,1.);
     }
     
     // collision
@@ -412,7 +413,13 @@ void LBM_Collision(
     for (int i = 0; i < 9; i++)
     {
         feq[i] = GetEquilibrium(u, p, c[i], w[i]);
-        f[i] = f_streamed[i] - (f_streamed[i] - feq[i]) / 0.8; // relaxation time tau = 0.1
+        f[i] = f[i] - (f[i] - feq[i]) / 0.8;
+    }
+    for (int i = 1; i < 5; i++)
+    {
+        float temp = f[i];
+        f[i] = f[9 - i];
+        f[9 - i] = temp;
     }
     StoreSimulationData2D(texelX, texelY, f, boundary);
 }
