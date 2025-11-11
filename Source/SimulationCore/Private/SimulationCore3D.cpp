@@ -8,6 +8,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(FSimulationLBM3DShaderParameters, )
 	SHADER_PARAMETER(float, RelaxationFactor)
 	SHADER_PARAMETER(FIntVector3, SimDimension)
 	SHADER_PARAMETER(int, DebugTextureSlice)
+	SHADER_PARAMETER_ARRAY(FIntVector4, c, [20])
+	SHADER_PARAMETER_ARRAY(FVector4f, w, [20])
 	SHADER_PARAMETER_UAV(RWTexture2D<float4>, DebugTexture)
 	SHADER_PARAMETER_UAV(RWTexture3D<half4>, DebugTexture3D)
 	SHADER_PARAMETER_UAV(RWStructuredBuffer<int>, DebugBuffer)
@@ -71,8 +73,6 @@ void FSimulationShaderResource3D::InitRHI(FRHICommandListBase& RHICmdList)
 		.SetFlags(ETextureCreateFlags::UAV).SetClearValue(FClearValueBinding(FLinearColor(0.f, 0.f, 0.f, 0.f)));
 	DebugTexture3D = RHICmdList.CreateTexture(Desc3D.SetDebugName(TEXT("LBM_DebugTexture3D")));
 
-	FRHIViewDesc ViewDesc;
-	
 	DebugTextureUAV = RHICmdList.CreateUnorderedAccessView(DebugTexture, FRHIViewDesc::CreateTextureUAV()
 		.SetDimensionFromTexture(DebugTexture)
 		.SetMipLevel(0)
@@ -108,6 +108,12 @@ void DispatchLBMInitalState3D_RenderThread(FRHICommandList& RHICmdList, FSimulat
 		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		for(int i = 0; i < 19; ++i)
+		{
+			Parameters.c[i] = FIntVector4(Resource->c[i], 0);
+			Parameters.w[i][0] = Resource->w[i];
+		}
+		//Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
@@ -129,6 +135,12 @@ void DispatchLBMStreaming3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		for (int i = 0; i < 19; ++i)
+		{
+			Parameters.c[i] = FIntVector4(Resource->c[i], 0);
+			Parameters.w[i][0] = Resource->w[i];
+		}
+		//Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
@@ -150,6 +162,12 @@ void DispatchLBMCollision3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		for (int i = 0; i < 19; ++i)
+		{
+			Parameters.c[i] = FIntVector4(Resource->c[i], 0);
+			Parameters.w[i][0] = Resource->w[i];
+		}
+		//Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}

@@ -38,6 +38,10 @@ public:
 	FRWBufferStructured DebugBuffer;
 	FUnorderedAccessViewRHIRef DebugTextureUAV;
 	FIntVector3 TextureSize;
+
+	TArray<FIntVector3> c;
+	TArray<float> w;
+
 	virtual void InitRHI(FRHICommandListBase& RHICmdList) override;
 
 	virtual void ReleaseRHI() override;
@@ -55,6 +59,49 @@ public:
 private:
 	FSimulationShaderResource3D() : TextureSize({ 256, 256, 256 }), Params({ 0.0005, 0.0003, 0.8, 16, FIntVector3(256, 256, 256) })
 	{
+		c = {
+			FIntVector3(0, 0, 0  ),
+			FIntVector3(-1, -1, 0),
+			FIntVector3(0, -1, 0 ),
+			FIntVector3(1, -1, 0 ),
+			FIntVector3(-1, 0, 0 ),
+			FIntVector3(0, -1, 1 ),
+			FIntVector3(-1, 0, 1 ),
+			FIntVector3(0, 0, 1  ),
+			FIntVector3(1, 0, 1  ),
+			FIntVector3(0, 1, 1  ),
+			FIntVector3(0, -1, -1),
+			FIntVector3(-1, 0, -1),
+			FIntVector3(0, 0, -1 ),
+			FIntVector3(1, 0, -1 ),
+			FIntVector3(0, 1, -1 ),
+			FIntVector3(1, 0, 0  ),
+			FIntVector3(-1, 1, 0 ),
+			FIntVector3(0, 1, 0  ),
+			FIntVector3(1, 1, 0  ),
+		};
+		w = {
+			1. / 3. , // [0]
+			1. / 36., // [1 - 4]
+			2. / 36.,
+			1. / 36.,
+			2. / 36.,
+			1. / 36., // [5 - 9]
+			1. / 36.,
+			2. / 36.,
+			1. / 36.,
+			1. / 36.,
+			1. / 36., // [10 - 14]
+			1. / 36.,
+			2. / 36.,
+			1. / 36.,
+			1. / 36.,
+			2. / 36., // [15 - 18]
+			1. / 36.,
+			2. / 36.,
+			1. / 36.
+		};
+
 		ENQUEUE_RENDER_COMMAND(FCreateSimShaderRes)([this](FRHICommandListImmediate& RHICmdList)
 			{
 				this->InitResource(RHICmdList);

@@ -121,9 +121,11 @@ public:
 		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture](FRHICommandListImmediate& RHICmdList)
 			{
 				FRHICopyTextureInfo CopyInfo;
-				CopyInfo.Size = { FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[0]), 
-								  FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[1]), 
-								  FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[2]) };
+				CopyInfo.Size = { 
+					FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[0]),
+					FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[1]),
+					FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[2])
+				};
 				auto srcRHI = FSimulationShaderResource3D::Get()->DebugTexture3D;
 				auto dstRHI = OutTexture->GetResource()->GetTexture3DRHI();
 				RHICmdList.CopyTexture(srcRHI, dstRHI, CopyInfo);
@@ -147,7 +149,11 @@ public:
 			{
 				FSimulationShaderResource3D::Get()->Params.InitialVelocity = InitialVelocity;
 				FSimulationShaderResource3D::Get()->Params.InitialDensity = InitialDensity;
-				DispatchLBMInitalState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 64, 64, 32);
+				DispatchLBMInitalState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4, 
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4
+				);
 			});
 	}
 
@@ -156,7 +162,10 @@ public:
 		ENQUEUE_RENDER_COMMAND(FLBMStreaming)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
 			{
 				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
-				DispatchLBMStreaming3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 64, 64, 32);
+				DispatchLBMStreaming3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
 			});
 	}
 
@@ -166,7 +175,10 @@ public:
 			{
 				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
 				FSimulationShaderResource3D::Get()->Params.RelaxationFactor = RelaxationFactor;
-				DispatchLBMCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 64, 64, 32);
+				DispatchLBMCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
 			});
 	}
 };
