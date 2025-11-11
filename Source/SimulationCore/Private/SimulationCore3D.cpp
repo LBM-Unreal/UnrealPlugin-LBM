@@ -70,7 +70,7 @@ void FSimulationShaderResource3D::InitRHI(FRHICommandListBase& RHICmdList)
 		FRHITextureCreateDesc::Create3D(TEXT("LBM_Textures"), TextureSize[0], TextureSize[1], TextureSize[2], PF_A16B16G16R16)
 		.SetFlags(ETextureCreateFlags::UAV).SetClearValue(FClearValueBinding(FLinearColor(0.f, 0.f, 0.f, 0.f)));
 	DebugTexture3D = RHICmdList.CreateTexture(Desc3D.SetDebugName(TEXT("LBM_DebugTexture3D")));
-	DebugTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_DebugTexture")));	
+
 	FRHIViewDesc ViewDesc;
 	
 	DebugTextureUAV = RHICmdList.CreateUnorderedAccessView(DebugTexture, FRHIViewDesc::CreateTextureUAV()

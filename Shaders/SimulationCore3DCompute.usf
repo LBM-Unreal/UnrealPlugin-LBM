@@ -99,6 +99,11 @@ void StoreDebugTexture2D(in uint texelX, in uint texelY, in float4 value)
     DebugTexture[uint2(texelX, texelY)] = value;
 }
 
+void StoreDebugTexture3D(in uint texelX, in uint texelY, in uint texelZ, in float4 value)
+{
+    DebugTexture3D[uint3(texelX, texelY, texelZ)] = value;
+}
+
 void ReadBoundaryValues3D(in uint texelX, in uint texelY, in uint texelZ, out float2 u, out float p)
 {
     // TODO: for dynamic boundaries
@@ -524,15 +529,6 @@ void LBM_Collision3D(
     {
         debugValue.xyz = float3(0., 0., 1.);
     }
-    DebugTexture3D[uint3(texelX, texelY, texelZ)].xyz = float3(length(u), 0., p);
-    if (IsNaN(p) || IsNaN(length(u)))
-    {
-        DebugTexture3D[uint3(texelX, texelY, texelZ)].xyz = float3(0., 1., 0.);
-    }
-    if (p == 0. || length(u) == 0.)
-    {
-        DebugTexture3D[uint3(texelX, texelY, texelZ)].xyz = float3(0., 0., 1.);
-    }
     
     // collision
     float cs = 1. / sqrt(3.);
@@ -548,4 +544,5 @@ void LBM_Collision3D(
     {
         StoreDebugTexture2D(texelX, texelY, debugValue);
     }
+    StoreDebugTexture3D(texelX, texelY, texelZ, debugValue);
 }

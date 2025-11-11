@@ -121,7 +121,9 @@ public:
 		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture](FRHICommandListImmediate& RHICmdList)
 			{
 				FRHICopyTextureInfo CopyInfo;
-				CopyInfo.Size = { 128,128,128 };
+				CopyInfo.Size = { FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[0]), 
+								  FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[1]), 
+								  FMath::Min(256, FSimulationShaderResource3D::Get()->TextureSize[2]) };
 				auto srcRHI = FSimulationShaderResource3D::Get()->DebugTexture3D;
 				auto dstRHI = OutTexture->GetResource()->GetTexture3DRHI();
 				RHICmdList.CopyTexture(srcRHI, dstRHI, CopyInfo);
