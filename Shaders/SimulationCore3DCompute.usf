@@ -417,5 +417,5 @@ void LBM_Collision3D(
     {
         StoreDebugTexture2D(texelX, texelY, debugValue);
     }
-    StoreDebugTexture3D(texelX, texelY, texelZ, debugValue);
+    StoreDebugTexture3D(texelX, texelY, texelZ, float4(u, p));
 }
