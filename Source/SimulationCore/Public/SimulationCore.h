@@ -8,9 +8,9 @@ public:
 	FRWBufferStructured OutputBuffer; // RWStructuredBuffer<float> OutputBuffer;
 	FTextureRHIRef DebugTexture;
 	FUnorderedAccessViewRHIRef DebugTextureUAV;
-	FTexture2DArrayRHIRef SimulationDataArray;
+	FTextureRHIRef SimulationDataArray;
 	FUnorderedAccessViewRHIRef SimulationDataArrayUAV;
-	FTexture2DArrayRHIRef SimulationDataArray2;
+	FTextureRHIRef SimulationDataArray2;
 	FUnorderedAccessViewRHIRef SimulationDataArray2UAV;
 	FRWBufferStructured DebugBuffer;
 	virtual void InitRHI(FRHICommandListBase& RHICmdList) override;
@@ -33,7 +33,7 @@ class SIMULATIONCORE_API FSimulationShaderResource3D : public FRenderResource
 	static FSimulationShaderResource3D* GInstance;
 public:
 	FTextureRHIRef DebugTexture;
-	FTexture3DRHIRef DebugTexture3D;
+	FTextureRHIRef DebugTexture3D;
 	FUnorderedAccessViewRHIRef DebugTexture3DUAV;
 	FRWBufferStructured DebugBuffer;
 	FUnorderedAccessViewRHIRef DebugTextureUAV;
@@ -129,6 +129,16 @@ void SIMULATIONCORE_API DispatchLBMCollision_RenderThread(
 	FSimulationShaderResource* Resource,
 	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
 
+void SIMULATIONCORE_API DispatchLBMMRInitialState_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMMRStreamingCollision_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
 void SIMULATIONCORE_API DispatchLBMInitalState3D_RenderThread(
 	FRHICommandList& RHICmdList,
 	FSimulationShaderResource3D* Resource,
@@ -140,6 +150,11 @@ void SIMULATIONCORE_API DispatchLBMStreaming3D_RenderThread(
 	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
 
 void SIMULATIONCORE_API DispatchLBMCollision3D_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource3D* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMBoundaryTreatment3D_RenderThread(
 	FRHICommandList& RHICmdList,
 	FSimulationShaderResource3D* Resource,
 	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);

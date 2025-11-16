@@ -117,7 +117,7 @@ void LBM_InitialState(
     float cs = 1. / sqrt(3.);
     
     
-    float2 u = float2(0.001, 0.);
+    float2 u = float2(0., 0.);
     float p = 0.03;
     float feq[9];
     
@@ -160,7 +160,7 @@ void LBM_InitialState(
     if (texelX == 0)
     {
         boundary = 2; // type 2 lattice with fixed velocity
-        u = float2(0.0, 0.05);
+        u = float2(0.1, 0.0);
         p = 0.06;
 
     }
@@ -331,7 +331,7 @@ void LBM_Collision(
     {
         float2 u = float2(0.5, 0.);
         float p = 0.06;
-        u = float2(0.0, 0.05);
+        u = float2(0.1, 0.0);
         p = 0.06;
         for (int i = 0; i < 9; i++)
         {
@@ -413,7 +413,7 @@ void LBM_Collision(
     for (int i = 0; i < 9; i++)
     {
         feq[i] = GetEquilibrium(u, p, c[i], w[i]);
-        f[i] = f[i] - (f[i] - feq[i]) / 0.8;
+        f[i] = f[i] - (f[i] - feq[i]) / 0.6;
     }
     for (int i = 1; i < 5; i++)
     {
@@ -422,4 +422,313 @@ void LBM_Collision(
         f[9 - i] = temp;
     }
     StoreSimulationData2D(texelX, texelY, f, boundary);
+}
+
+#define BLOCK_DIM_X 4
+#define BLOCK_DIM_Y 4
+#define BLOCK_DIM_Z 1
+groupshared float f_shared[(BLOCK_DIM_X + 2) * (BLOCK_DIM_Y + 2) * 10];
+
+#define W0 4./9.
+#define W1 1./36.
+#define W2 1./9.
+
+float Get2ndOrderDistributionAtIndexByMoments(float2 c_i, float3 m_xx_xy_yy)
+{
+    return 0.5 * 9. * (m_xx_xy_yy.x * (c_i.x * c_i.x - 1. / 3.) + m_xx_xy_yy.z * (c_i.y * c_i.y - 1. / 3.) + 2. * m_xx_xy_yy.y * c_i.x * c_i.y);
+}
+
+void StoreShared(in uint localX, in uint localY, in float f[9])
+{
+    for (int i = 0; i < 9; i++)
+    {
+        f_shared[i + 10 * localX + 10 * (BLOCK_DIM_X + 2) * localY] = f[i];
+    }
+}
+
+void LoadSharedIndex(in uint localX, in uint localY, in int index, out float value)
+{
+    value = f_shared[index + 10 * localX + 10 * (BLOCK_DIM_X + 2) * localY];
+}
+
+// m_: x: m_xx, y: m_xy, z: m_yy
+void ReadMomentRepSimulationData2D(in int texelX, in int texelY, out float rho, out float2 u_, out float3 m_, out int boundary)
+{
+    rho = asfloat(DebugBuffer[0 + 10 * texelX + 10 * 256 * texelY]);
+    
+    u_.x = asfloat(DebugBuffer[1 + 10 * texelX + 10 * 256 * texelY]);
+    u_.y = asfloat(DebugBuffer[2 + 10 * texelX + 10 * 256 * texelY]);
+    
+    m_.x = asfloat(DebugBuffer[3 + 10 * texelX + 10 * 256 * texelY]);
+    m_.y = asfloat(DebugBuffer[4 + 10 * texelX + 10 * 256 * texelY]);
+    m_.z = asfloat(DebugBuffer[5 + 10 * texelX + 10 * 256 * texelY]);
+    boundary = DebugBuffer[9 + 10 * texelX + 10 * 256 * texelY];
+}
+
+void StoreMomentRepSimulationData2D(in int texelX, in int texelY, in float rho, in float2 u_, in float3 m_, in int boundary)
+{
+    DebugBuffer[0 + 10 * texelX + 10 * 256 * texelY] = asint(rho);
+    
+    DebugBuffer[1 + 10 * texelX + 10 * 256 * texelY] = asint(u_.x);
+    DebugBuffer[2 + 10 * texelX + 10 * 256 * texelY] = asint(u_.y);
+    
+    DebugBuffer[3 + 10 * texelX + 10 * 256 * texelY] = asint(m_.x);
+    DebugBuffer[4 + 10 * texelX + 10 * 256 * texelY] = asint(m_.y);
+    DebugBuffer[5 + 10 * texelX + 10 * 256 * texelY] = asint(m_.z);
+    DebugBuffer[9 + 10 * texelX + 10 * 256 * texelY] = boundary;
+}
+
+
+[numthreads(16, 16, 1)]
+void LBM_MR_InitialState(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    if (texelX > 255 || texelY > 255)
+    {
+        return;
+    }
+    float cs = 1. / sqrt(3.);
+    
+    
+    float2 u = float2(0., 0.);
+    float rho = 0.03;
+    
+    int boundary = 0;
+    // process all boundary settings
+    if (texelX <= 0 || texelX >= 255 || texelY <= 0 || texelY >= 255)
+    {
+        boundary = 1; // type 1 lattice
+    }
+    // inside solid boundary
+    float2 center = float2(128., 128.);
+    float radius = 10;
+    float d = sphere(float2(texelX, texelY), center, radius);
+    if (d < 0.)
+    {
+        boundary = 1;
+    }
+    if (texelX == 0)
+    {
+        boundary = 2; // type 2 lattice with fixed velocity
+        u = float2(0.1, 0.0);
+        rho = 0.06;
+
+    }
+    if (texelX == 255 && texelY > 0 && texelY < 255)
+    {
+        boundary = 3;
+    }
+    StoreMomentRepSimulationData2D(texelX, texelY, rho, u, float3(0., 0., 0.), boundary);
+    DebugTexture[uint2(texelX, texelY)].x = length(u);
+    DebugTexture[uint2(texelX, texelY)].y = 0.;
+    DebugTexture[uint2(texelX, texelY)].z = rho;
+}
+
+[numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, 1)]
+void LBM_MR_Streaming_Collision(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    /*
+    
+    1 2 3 
+    4 0 5
+    6 7 8
+    
+    */
+    
+    uint texelX = DispatchThreadId.x + 1;
+    uint texelY = DispatchThreadId.y + 1; // skip the outer boundary
+    uint block_x_dim = BLOCK_DIM_X;
+    uint block_y_dim = BLOCK_DIM_Y;
+    if (texelX > 254 || texelY > 254)
+    {
+        return;
+    }
+    // LBM constants
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(-1., 0.),
+        float2(1., 0.),
+        float2(-1., 1.),
+        float2(0., 1.),
+        float2(1., 1.),
+    };
+    
+    float w[9] =
+    {
+        4. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+    };
+    // STAGE 1 -- populate group shared memory with distrubution functions
+    
+    // read moments
+    float rho;
+    float2 u_;
+    float3 m_;
+    
+    // compute distribution functions from moments
+    float f[9];
+    float cs = 1. / sqrt(3.);
+    
+    // deal with halo cells
+    int boundary2 = 0;
+    if (tid.x == 0 && tid.y == 0)
+    {
+        // deal with four corners in this thread
+        ReadMomentRepSimulationData2D(texelX - 1, texelY - 1, rho, u_, m_, boundary2);
+        // based on 2023 Ferrari equation (10)
+        for (int i = 0; i < 9; i++)
+        {
+            f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
+        }
+    
+        StoreShared(tid.x - 1 + 1, tid.y -1 + 1, f);
+        
+        // deal with four corners in this thread
+        ReadMomentRepSimulationData2D(texelX + block_x_dim, texelY - 1, rho, u_, m_, boundary2);
+        // based on 2023 Ferrari equation (10)
+        for (int i = 0; i < 9; i++)
+        {
+            f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
+        }
+    
+        StoreShared(tid.x + block_x_dim + 1, tid.y - 1 + 1, f);
+        
+        // deal with four corners in this thread
+        ReadMomentRepSimulationData2D(texelX - 1, texelY + block_y_dim, rho, u_, m_, boundary2);
+        // based on 2023 Ferrari equation (10)
+        for (int i = 0; i < 9; i++)
+        {
+            f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
+        }
+    
+        StoreShared(tid.x - 1 + 1, tid.y + block_y_dim + 1, f);
+        
+        // deal with four corners in this thread
+        ReadMomentRepSimulationData2D(texelX + block_x_dim, texelY + block_y_dim, rho, u_, m_, boundary2);
+        // based on 2023 Ferrari equation (10)
+        for (int i = 0; i < 9; i++)
+        {
+            f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
+        }
+    
+        StoreShared(tid.x + block_x_dim + 1, tid.y + block_y_dim + 1, f);
+    }
+    
+    AllMemoryBarrierWithGroupSync();
+    int2 offset = int2(0, 0);
+    // left and right halos
+    if (tid.x == 0 || tid.x == block_x_dim - 1)
+    {
+        if (tid.x == 0)
+        {
+            offset = int2(-1, 0);
+        }
+        if (tid.x == block_x_dim - 1)
+        {
+            offset = int2(1, 0);
+        }
+        ReadMomentRepSimulationData2D(texelX + offset.x, texelY + offset.y, rho, u_, m_, boundary2);
+        for (int i = 0; i < 9; i++)
+        {
+            f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
+        }
+        StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, f);
+    }
+    
+    // upper and lower halos
+    if (tid.y == 0 || tid.y == block_y_dim - 1)
+    {
+        if (tid.y == 0)
+        {
+            offset = int2(0, -1);
+        }
+        if (tid.y == block_y_dim - 1)
+        {
+            offset = int2(0, 1);
+        }
+        ReadMomentRepSimulationData2D(texelX + offset.x, texelY + offset.y, rho, u_, m_, boundary2);
+        for (int i = 0; i < 9; i++)
+        {
+            f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
+        }
+        StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, f);
+    }
+    
+    int boundary;
+    
+    // actual cell
+    ReadMomentRepSimulationData2D(texelX, texelY, rho, u_, m_, boundary);
+    for (int i = 0; i < 9; i++)
+    {
+        f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
+    }
+    StoreShared(tid.x + 1, tid.y + 1, f);
+    
+    AllMemoryBarrierWithGroupSync();
+    // STAGE 2 -- stream the group shared data and convert back to moments
+    for (int i = 0; i < 9; i++)
+    {
+        int2 c_i = int2((int)c[i].x, (int)c[i].y);
+        LoadSharedIndex(tid.x + 1 - c_i.x, tid.y + 1 - c_i.y, i, f[i]);
+    }
+    
+    // STAGE 3 -- collide and write back the moments to global memory
+    
+    // compute moments from distribution functions
+    if (boundary == 0)
+    {
+        rho = 0.;
+        u_ = float2(0., 0.);
+        m_ = float3(0., 0., 0.);
+        for (int i = 0; i < 9; i++)
+        {
+            rho += f[i];
+            u_ += c[i] * f[i];
+            m_.x += (c[i].x * c[i].x - 1. / 3.) * f[i];
+            m_.y += (c[i].x * c[i].y) * f[i];
+            m_.z += (c[i].y * c[i].y - 1. / 3.) * f[i];
+        }
+        u_ /= rho;
+        m_ /= rho;
+    
+        // collide using moments
+        float omega = 1. / 0.6;
+        m_.x = (1. - omega) * m_.x + omega * u_.x * u_.x;
+        m_.y = (1. - omega) * m_.y + omega * u_.x * u_.y;
+        m_.z = (1. - omega) * m_.z + omega * u_.y * u_.y;
+    }
+    if (boundary == 2)
+    {
+        u_ = float2(0.1, 0.0);
+        rho = 0.06;
+    }
+    if (boundary == 3)
+    {
+        ReadMomentRepSimulationData2D(texelX - 1, texelY, rho, u_, m_, boundary);
+    }
+    
+    StoreMomentRepSimulationData2D(texelX, texelY, rho, u_, m_, boundary);
+    DebugTexture[uint2(texelX, texelY)].x = length(u_);
+    DebugTexture[uint2(texelX, texelY)].y = 0.;
+    DebugTexture[uint2(texelX, texelY)].z = rho;
 }

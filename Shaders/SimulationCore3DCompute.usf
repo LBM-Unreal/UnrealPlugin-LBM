@@ -104,7 +104,7 @@ void StoreDebugTexture2D(in uint texelX, in uint texelY, in float4 value)
 
 void StoreDebugTexture3D(in uint texelX, in uint texelY, in uint texelZ, in float4 value)
 {
-    DebugTexture3D[uint3(texelX, texelY, texelZ)] = value;
+    //DebugTexture3D[uint3(texelX, texelY, texelZ)] = value;
 }
 
 void ReadBoundaryValues3D(in uint texelX, in uint texelY, in uint texelZ, out float2 u, out float p)
@@ -284,12 +284,12 @@ void GetVelocityAndDensity(int group_offset, out float3 u, out float p)
 }
 
 [numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
-void LBM_Collision3D(
+void LBM_BoundaryTreatment3D(
 	uint3 DispatchThreadId : SV_DispatchThreadID,
 	uint3 tid : SV_GroupThreadID,
 	uint GroupIndex : SV_GroupIndex,
 	uint3 GroupID : SV_GroupID)
-{    
+{
     uint texelX = DispatchThreadId.x;
     uint texelY = DispatchThreadId.y;
     uint texelZ = DispatchThreadId.z;
@@ -304,7 +304,10 @@ void LBM_Collision3D(
     float4 debugValue = float4(0., 0., 0., 1.);
     
     ReadSimulationData3D(group_tid_offset, texelX, texelY, texelZ, boundary);
-    
+    if (boundary == 0)
+    {
+        return;
+    }
     // boundary treatment
     
     float f_fake = -1. * (texelX + SimDimension.x * texelY);
@@ -349,23 +352,40 @@ void LBM_Collision3D(
         float boundary_left;
         ReadSimulationData3D(group_tid_offset, texelX + offset.x, texelY + offset.y, texelZ + offset.z, boundary_left);
     }
-    if (boundary >= 1) // no simulation inside solid 
+    ReverseF(group_tid_offset);
+    StoreSimulationData3D(group_tid_offset, texelX, texelY, texelZ, boundary);
+    if (texelZ == DEBUG_TEXTURE_SLICE)
     {
-        ReverseF(group_tid_offset);
-        StoreSimulationData3D(group_tid_offset, texelX, texelY, texelZ, boundary);
-        
-        if (texelZ == DEBUG_TEXTURE_SLICE)
-        {
-            StoreDebugTexture2D(texelX, texelY, debugValue);
-        }
+        StoreDebugTexture2D(texelX, texelY, debugValue);
+    }
+}
+
+
+[numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
+void LBM_Collision3D(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{    
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    uint texelZ = DispatchThreadId.z;
+    if (texelX > SimDimension.x - 1 || texelY > SimDimension.y - 1 || texelZ > SimDimension.z - 1)
+    {
         return;
     }
     
+    // lbm distribution functions
+    uint group_tid_offset = (tid.x + BLOCK_DIM_X * tid.y + BLOCK_DIM_X * BLOCK_DIM_Y * tid.z) * Q;
+    int boundary = 0;
+    float4 debugValue = float4(0., 0., 0., 1.);
+    
+    ReadSimulationData3D(group_tid_offset, texelX, texelY, texelZ, boundary);
     
     float p = 0.;
     float3 u = float3(0., 0., 0.);
     
-    // boundary treatment
     // bounce back
     for (int i = 1; i < Q; i++)
     {

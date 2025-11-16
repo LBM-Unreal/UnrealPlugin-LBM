@@ -101,6 +101,22 @@ public:
 			});
 	}
 
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR InitialState"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMMRInitialState() {
+		ENQUEUE_RENDER_COMMAND(FLBMMRInitialState)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMMRInitialState_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR Streaming Collision"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMMRStreamingCollision() {
+		ENQUEUE_RENDER_COMMAND(FLBMMRStreamingCollision)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMMRStreamingCollision_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 63, 63, 1); // margin the last row/col of cells
+			});
+	}
+
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Debug Texture Value 3D"), Category = "LBM Sim")
 	static SIMULATIONBP_API void GetDebugTextureValue3D(UTexture* OutTexture)
 	{
@@ -176,6 +192,18 @@ public:
 				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
 				FSimulationShaderResource3D::Get()->Params.RelaxationFactor = RelaxationFactor;
 				DispatchLBMCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
+			});
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM BoundaryTreatment 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMBoundaryTreatment3D(int debugTextureSlice) {
+		ENQUEUE_RENDER_COMMAND(FLBMBoundaryTreatment3D)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
+			{
+				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
+				DispatchLBMBoundaryTreatment3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(),
 					FSimulationShaderResource3D::Get()->TextureSize[0] / 4,
 					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
 					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);

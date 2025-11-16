@@ -48,6 +48,16 @@ public:
 
 IMPLEMENT_SHADER_TYPE(, FLBMCollision3DShaderCS, TEXT("/LBM/Shaders/SimulationCore3DCompute.usf"), TEXT("LBM_Collision3D"), SF_Compute)
 
+class FLBMBoundaryTreatment3DShaderCS : public FGlobalShader
+{
+public:
+	DECLARE_SHADER_TYPE(FLBMBoundaryTreatment3DShaderCS, Global)
+	SHADER_USE_PARAMETER_STRUCT(FLBMBoundaryTreatment3DShaderCS, FGlobalShader)
+		using FParameters = FSimulationLBM3DShaderParameters;
+};
+
+IMPLEMENT_SHADER_TYPE(, FLBMBoundaryTreatment3DShaderCS, TEXT("/LBM/Shaders/SimulationCore3DCompute.usf"), TEXT("LBM_BoundaryTreatment3D"), SF_Compute)
+
 // 初始化单例指针
 FSimulationShaderResource3D* FSimulationShaderResource3D::GInstance = nullptr;
 
@@ -155,6 +165,33 @@ void DispatchLBMCollision3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMCollision3DShaderCS::FParameters Parameters{};
+		Parameters.InitialDensity = Resource->Params.InitialDensity;
+		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
+		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
+		Parameters.SimDimension = Resource->Params.SimDimensions;
+		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
+		Parameters.DebugTexture = Resource->DebugTextureUAV;
+		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		for (int i = 0; i < 19; ++i)
+		{
+			Parameters.c[i] = FIntVector4(Resource->c[i], 0);
+			Parameters.w[i][0] = Resource->w[i];
+		}
+		//Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
+		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
+		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
+	}
+	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+	//UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
+	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
+}
+
+void DispatchLBMBoundaryTreatment3D_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource3D* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
+{
+	TShaderMapRef<FLBMBoundaryTreatment3DShaderCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
+	{
+		typename FLBMBoundaryTreatment3DShaderCS::FParameters Parameters{};
 		Parameters.InitialDensity = Resource->Params.InitialDensity;
 		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
 		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
