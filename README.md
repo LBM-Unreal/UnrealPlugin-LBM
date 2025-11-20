@@ -1,10 +1,24 @@
-# Project Documents
+![](./Misc/Logo_RealiFluid.png)
 
-[Milestone 1 Slides](https://docs.google.com/presentation/d/1kCbG1b0JJE_pyrgcBuqKFJYQE60t1BLb7Cjyb2nZFx8/edit?usp=sharing)
+# Introduction
 
-# Additional References
+RealiFluid is an interactive, realtime LBM based fluid simulation implemented in Unreal Engine Plugin. Its goal is to provide **high-speed** and **high-resolution** fluid simulation, as well as maintaining level of accuracy. 
 
-## LBM Introduction
+![](./Misc/3D%20Sim%20Aircraft.png)
+
+3D LBM aerodynamics simulation on a 256\*256\*256 grid
+
+## LBM: Core of simulation algorithm
+
+Real-time fluid simulation focuses on how velocity and pressure fields evolve frame by frame. Classical CFD solves the Navier–Stokes equations directly at the macroscopic scale, whereas the lattice Boltzmann method (LBM) operates at a mesoscopic scale: each lattice node stores several particle distribution functions aligned with discrete velocity directions. Each time step alternates between **collision** (relax the distributions toward equilibrium locally) and **streaming** (advect the distributions along their discrete velocities to neighboring nodes). Those distributions are then used to reconstruct density and velocity. Because every lattice cell performs identical local work, **LBM scales perfectly on GPUs** and naturally handles complex boundaries—exactly what this high-resolution real-time project needs.
+
+- **Laminar flow** – smooth, ordered motion where fluid parcels slide past one another along predictable trajectories; typical of low-speed or high-viscosity regimes.
+- **Turbulent flow** – chaotic, vortex-dominated motion with energy cascading across many scales; it raises numerical stability and resolution requirements.
+- **Reynolds number (Re)** – Re = ρUL / μ, relating inertial to viscous forces. Low Re usually stays laminar; passing a critical Re triggers turbulence. By tuning LBM relaxation parameters, grid spacing, and boundary conditions, we can emulate a wide range of Re-driven behaviors.
+
+Low-Re scenarios (e.g., slow channel flow) remain stable with moderate grids. High-Re cases demand finer lattices, smaller time steps, or advanced collision schemes (MRT, entropic LBM, etc.) to preserve accuracy and robustness.
+
+See links below to know more about LBM:
 
 https://www.youtube.com/watch?v=jfk4feD7rFQ
 
@@ -14,7 +28,42 @@ https://ppluscht.github.io/LBM/
 
 https://pastewka.github.io/Accelerators/lecture/boundary-conditions.html
 
-# Project Setup
+# Work In Progress
+
+- Two phase Flow
+- Multi-Dimensional Simulation
+- HOME-LBM representation(memory compression)
+- Realtime Boundary Extraction
+- Fluid & Gas Realistic Rendering
+
+# Project Documents
+
+[Milestone 1 Slides](https://docs.google.com/presentation/d/1kCbG1b0JJE_pyrgcBuqKFJYQE60t1BLb7Cjyb2nZFx8/edit?usp=sharing)
+
+# Reference Papers
+
+Target Paper to implement:
+
+[Haoxiang Wang, Kui Wu, Hui Qiao, Mathieu Desbrun, and Wei Li. 2025. Kinetic Free-Surface Flows and Foams with Sharp Interfaces. ACM Trans. Graph.](https://haoxiang-wang.com/assets/WWQD25.pdf)
+
+Additional References:
+
+**Memory Compression**
+
+- Technical report: How to implement your DdQq dynamics with only q variables per node (instead of 2q)
+
+**Moment-Based Representation**
+
+- A graphic processing unit implementation for the moment representation of the lattice Boltzmann method
+- High-Order Moment-Encoded Kinetic Simulation of Turbulent Flows
+
+**Two-Phase(Free Surface) LBM**
+
+- Physically based Animation of Free Surface Flows with the Lattice Boltzmann Method
+- High Performance Free Surface LBM on GPUs
+
+
+# Project Setup(For Developers)
 
 1. Install your Unreal Engine, either epic launcher version or source code version. I will use epic launcher version. For the source code version, please follow the documentation on epic website. 
 
