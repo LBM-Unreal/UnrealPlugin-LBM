@@ -7,6 +7,9 @@
 #include "SimulationCore.h"
 #include "IRenderDocPlugin.h"
 #include "Engine/Texture2DArray.h"
+#include "VoxelMesh.h"
+#include "VoxelGrid.h"
+#include "VoxelizationCore.h"
 
 #include "SimulationBPModule.generated.h"
 
@@ -207,6 +210,44 @@ public:
 					FSimulationShaderResource3D::Get()->TextureSize[0] / 4,
 					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
 					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
+			});
+	}
+
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Update VoxelData 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void UpdateVoxelData3D();
+
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor"), Category = "LBM Sim")
+	static SIMULATIONBP_API void VoxelizeActor(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin, float VoxelSize) {
+		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
+			{
+				FVoxelMesh VoxelMesh;
+				VoxelMesh.SetGridDim(FIntVector(GridDim));
+				VoxelMesh.SetOrigin(Origin);
+				VoxelMesh.SetVoxelSize(VoxelSize);
+				VoxelMesh.ResetVoxelGrid();
+				VoxelMesh.VoxelizeMeshInGrid(SMActor, false);
+				auto* VoxelizeResource = FVoxelGridResource::Get();
+				VoxelizeResource->GridDim = FIntVector(GridDim);
+				auto SimDim = FSimulationShaderResource3D::Get()->Params.SimDimensions;
+				constexpr int BlockSize = 4;
+
+				VoxelizeResource->UpdateRHI(RHICmdList);
+
+				// Copy to GPU
+				void* OutputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer, 0, 
+					VoxelMesh.Occupancy.Num() * sizeof(uint32), RLM_WriteOnly));
+				FMemory::Memcpy(OutputGPUBuffer, VoxelMesh.Occupancy.GetData(), VoxelMesh.Occupancy.Num() * sizeof(uint32));
+				RHICmdList.UnlockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer);
+
+				// Copy to Sim
+				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList, 
+					FVoxelGridResource::Get(),
+					FSimulationShaderResource3D::Get()->DebugBuffer.UAV, SimDim,
+					(SimDim.X + BlockSize - 1) / BlockSize,
+					(SimDim.Y + BlockSize - 1) / BlockSize,
+					(SimDim.Z + BlockSize - 1) / BlockSize);
 			});
 	}
 };

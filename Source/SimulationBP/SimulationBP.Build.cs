@@ -9,7 +9,7 @@ public class SimulationBP : ModuleRules
 	
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "SimulationCore", "RHI", "RenderCore", "RenderDocPlugin" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "SimulationCore", "RHI", "RenderCore", "RenderDocPlugin", "Voxelization" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

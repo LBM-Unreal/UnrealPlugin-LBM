@@ -19,18 +19,45 @@ struct FVoxelMesh
     /** Number of voxels along each axis (resolution) */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voxel")
     FIntVector GridDim = FIntVector::ZeroValue;
+
     /** World-space origin (corner) of the grid */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voxel")
     FVector3f Origin = FVector3f::ZeroVector;
 
     /** Voxel data */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voxel")
-    TArray<uint8> Occupancy;
+    UPROPERTY(VisibleAnywhere, Category = "Voxel")
+    TArray<uint32> Occupancy;
+
+
+    // ------------------------------------------------------------------------
+    // Set up
+    // ------------------------------------------------------------------------
+    VOXELIZATION_API void  SetGridDim(const FIntVector Dim);
+
+    FORCEINLINE VOXELIZATION_API void SetVoxelSize(const float Size)
+    {
+        this->VoxelSize = Size;
+    }
+
+    FORCEINLINE VOXELIZATION_API void SetOrigin(const FVector3f Min)
+    {
+        Origin = Min;
+    }
+
+    /** Clear grid to empty (0) */
+    FORCEINLINE VOXELIZATION_API void ResetVoxelGrid()
+    {
+        for (uint32& V : Occupancy)
+        {
+            V = 0;
+        }
+    }
 
     // ------------------------------------------------------------------------
 	// Core operations
 	// ------------------------------------------------------------------------
     void VoxelizeMesh(const UStaticMesh* Mesh);
+    void VOXELIZATION_API VoxelizeMeshInGrid(const AStaticMeshActor* MeshActor, bool ResetGrid = true);
 
     // ------------------------------------------------------------------------
     // Basic operations
@@ -43,18 +70,9 @@ struct FVoxelMesh
     }
 
     /** Resize Occupancy to match GridDim */
-    FORCEINLINE void Reallocate()
+    FORCEINLINE void ReallocateVoxelGrid()
     {
         Occupancy.SetNumZeroed(NumVoxels());
-    }
-
-    /** Clear grid to empty (0) */
-    FORCEINLINE void Clear()
-    {
-        for (uint8& V : Occupancy)
-        {
-            V = 0;
-        }
     }
 
     /** Convert 3D coordinates to linear index */  
@@ -64,13 +82,13 @@ struct FVoxelMesh
     }
 
     /** Get voxel occupancy */
-    FORCEINLINE uint8 Get(int32 X, int32 Y, int32 Z) const
+    FORCEINLINE uint32 Get(int32 X, int32 Y, int32 Z) const
     {
         return Occupancy[Index(X, Y, Z)];
     }
 
     /** Set voxel occupancy */
-    FORCEINLINE void Set(int32 X, int32 Y, int32 Z, uint8 Value)
+    FORCEINLINE void Set(int32 X, int32 Y, int32 Z, uint32 Value)
     {
         Occupancy[Index(X, Y, Z)] = Value;
     }

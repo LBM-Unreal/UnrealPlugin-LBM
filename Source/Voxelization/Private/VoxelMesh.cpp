@@ -1,15 +1,23 @@
 #include "VoxelMesh.h"
 #include "StaticMeshResources.h"
-#include "Voxelization.h"
+#include "VoxelizationModule.h"
+#include "Engine/StaticMeshActor.h"
 #include "Math/UnrealMathUtility.h"
 
 // Helper function for voxel triangle intersection 
 bool TriangleAABBTest(FVector3f V0, FVector3f V1, FVector3f V2, FVector3f BoxCenter, FVector3f BoxHalfWidth);
 
 
+void FVoxelMesh::SetGridDim(const FIntVector Dim)
+{
+    this->GridDim = Dim;
+    ReallocateVoxelGrid();
+}
+
+// Adjust the voxel grid to contain the StaticMesh, then voxelize the mesh into the grid
 void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
 {
-    //static_assert(false);
+    // Validation and setup
     if (!Mesh || !Mesh->GetRenderData() || Mesh->GetRenderData()->LODResources.Num() == 0)
     {
         // Mesh->GetRenderData()->IsInitialized(); ?
@@ -20,6 +28,7 @@ void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
     if (VoxelSize < 0)
     {
         UE_LOG(LogVoxelization, Warning, TEXT("Voxelization: invalid voxel size, got %f"), VoxelSize);
+        return;
     }
 
     FBox meshBound = Mesh->GetBoundingBox();
@@ -30,11 +39,12 @@ void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
     GridDim.X = 2 * FMath::CeilToInt(meshBoundExtent.X / VoxelSize);
     GridDim.Y = 2 * FMath::CeilToInt(meshBoundExtent.Y / VoxelSize);
     GridDim.Z = 2 * FMath::CeilToInt(meshBoundExtent.Z / VoxelSize);
-    Reallocate();
-    Clear();
 
     // Set VoxelMesh's origin to the mesh bound min
     Origin = FVector3f(meshBoundCenter - FVector(GridDim) * 0.5f * VoxelSize);
+
+    ReallocateVoxelGrid();
+    ResetVoxelGrid();
 
     // Extract raw positions
     const FStaticMeshLODResources& LOD = Mesh->GetRenderData()->LODResources[0];
@@ -60,13 +70,22 @@ void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
         FVector3f MinV = FVector3f::Min3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
         FVector3f MaxV = FVector3f::Max3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
 
-        MinGridBound.X = FMath::FloorToInt(MinV.X);
+        /*MinGridBound.X = FMath::FloorToInt(MinV.X);
         MinGridBound.Y = FMath::FloorToInt(MinV.Y);
         MinGridBound.Z = FMath::FloorToInt(MinV.Z);
 
         MaxGridBound.X = FMath::FloorToInt(MaxV.X);
         MaxGridBound.Y = FMath::FloorToInt(MaxV.Y);
-        MaxGridBound.Z = FMath::FloorToInt(MaxV.Z);
+        MaxGridBound.Z = FMath::FloorToInt(MaxV.Z);*/
+        MinGridBound.X = FMath::Clamp(FMath::FloorToInt(MinV.X), 0, GridDim.X - 1);
+        MinGridBound.Y = FMath::Clamp(FMath::FloorToInt(MinV.Y), 0, GridDim.Y - 1);
+        MinGridBound.Z = FMath::Clamp(FMath::FloorToInt(MinV.Z), 0, GridDim.Z - 1);
+
+        MaxGridBound.X = FMath::Clamp(FMath::FloorToInt(MaxV.X), 0, GridDim.X - 1);
+        MaxGridBound.Y = FMath::Clamp(FMath::FloorToInt(MaxV.Y), 0, GridDim.Y - 1);
+        MaxGridBound.Z = FMath::Clamp(FMath::FloorToInt(MaxV.Z), 0, GridDim.Z - 1);
+
+    	UE_LOG(LogVoxelization, Display, TEXT("Voxelizing Triangle %d / %d"), I / 3, IB.GetNumIndices() / 3 - 1)
 
         // Naively traverse the voxel bounds and test intersection
         for (int Z = MinGridBound.Z; Z <= MaxGridBound.Z; ++Z)
@@ -88,8 +107,107 @@ void FVoxelMesh::VoxelizeMesh(const UStaticMesh* Mesh)
     }
 }
 
-// We use the algorithm from "Fast 3D Triangle-Box Overlap Testing" by Tomas Akenine-Moller 
-// but skip the redundant AABB's x, y, z axis tests
+
+// Voxelize the StaticMeshActor into the current voxel grid, the actor's transformation is applied to the mesh vertices
+// If ResetGrid is false, the new voxelization will be merged into the existing grid
+void FVoxelMesh::VoxelizeMeshInGrid(const AStaticMeshActor* MeshActor, bool ResetGrid)
+{
+    // Validation and setup
+    if (!MeshActor || !MeshActor->GetStaticMeshComponent())
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("FVoxelMesh::VoxelizeMeshInGrid: Invalid StaticMeshActor"));
+        return;
+    }
+
+    UStaticMesh* Mesh = MeshActor->GetStaticMeshComponent()->GetStaticMesh();
+    if (!Mesh || !Mesh->GetRenderData() || Mesh->GetRenderData()->LODResources.Num() == 0)
+    {
+        // Mesh->GetRenderData()->IsInitialized(); ?
+        UE_LOG(LogVoxelization, Warning, TEXT("FVoxelMesh::VoxelizeMesh: Invalid mesh"));
+        return;
+    }
+
+    if (VoxelSize < 0)
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("Voxelization: invalid voxel size, got %f"), VoxelSize);
+        return;
+    }
+
+    if (GridDim.X <= 0 || GridDim.Y <= 0 || GridDim.Z <= 0)
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("Voxelization: invalid GridDim, got [%d, %d, %d]"), GridDim.X, GridDim.Y, GridDim.Z);
+        return;
+    }
+
+    if (ResetGrid)
+    {
+        ResetVoxelGrid();
+    }
+
+    // Extract raw positions
+    const FStaticMeshLODResources& LOD = Mesh->GetRenderData()->LODResources[0];
+    const FPositionVertexBuffer& VB = LOD.VertexBuffers.PositionVertexBuffer;
+    const FRawStaticIndexBuffer& IB = LOD.IndexBuffer;
+
+    const FTransform LocalToWorld = MeshActor->GetActorTransform();
+
+    // Voxelize
+    for (int32 I = 0; I < IB.GetNumIndices(); I += 3)
+    {
+        FVector3f V0Local = VB.VertexPosition(IB.GetIndex(I + 0));
+        FVector3f V1Local = VB.VertexPosition(IB.GetIndex(I + 1));
+        FVector3f V2Local = VB.VertexPosition(IB.GetIndex(I + 2));
+
+        FVector3f V0World = FVector3f(LocalToWorld.TransformPosition(FVector(V0Local)));
+        FVector3f V1World = FVector3f(LocalToWorld.TransformPosition(FVector(V1Local)));
+        FVector3f V2World = FVector3f(LocalToWorld.TransformPosition(FVector(V2Local)));
+
+        // Transform to voxel space (0..GridSize)
+        FVector3f V0VoxelSpace = (V0World - Origin) / VoxelSize;
+        FVector3f V1VoxelSpace = (V1World - Origin) / VoxelSize;
+        FVector3f V2VoxelSpace = (V2World - Origin) / VoxelSize;
+
+        // Compute triangle bounds in voxel space for intersection efficiency
+        FIntVector MaxGridBound{};
+        FIntVector MinGridBound{};
+
+        FVector3f MinV = FVector3f::Min3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
+        FVector3f MaxV = FVector3f::Max3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
+
+        MinGridBound.X = FMath::Clamp(FMath::FloorToInt(MinV.X), 0, GridDim.X - 1);
+        MinGridBound.Y = FMath::Clamp(FMath::FloorToInt(MinV.Y), 0, GridDim.Y - 1);
+        MinGridBound.Z = FMath::Clamp(FMath::FloorToInt(MinV.Z), 0, GridDim.Z - 1);
+
+        MaxGridBound.X = FMath::Clamp(FMath::FloorToInt(MaxV.X), 0, GridDim.X - 1);
+        MaxGridBound.Y = FMath::Clamp(FMath::FloorToInt(MaxV.Y), 0, GridDim.Y - 1);
+        MaxGridBound.Z = FMath::Clamp(FMath::FloorToInt(MaxV.Z), 0, GridDim.Z - 1);
+
+        UE_LOG(LogVoxelization, Display, TEXT("Voxelizing Triangle %d / %d"), I / 3, IB.GetNumIndices() / 3 - 1)
+        // Naively traverse the voxel bounds and test intersection
+        for (int Z = MinGridBound.Z; Z <= MaxGridBound.Z; ++Z)
+        {
+            for (int Y = MinGridBound.Y; Y <= MaxGridBound.Y; ++Y)
+            {
+                for (int X = MinGridBound.X; X <= MaxGridBound.X; ++X)
+                {
+                    const FVector3f VoxelHalfSize = FVector3f(VoxelSize * 0.5f);
+                    FVector3f VoxelCenter = Origin + VoxelSize * FVector3f(X, Y, Z) + VoxelHalfSize;
+
+                    if (TriangleAABBTest(V0World, V1World, V2World, VoxelCenter, VoxelHalfSize))
+                    {
+                        Set(X, Y, Z, 1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// We use the algorithm from "Fast 3D Triangle-Box Overlap Testing" by Tomas Akenine-Moller,
+// but skipped the redundant AABB's x, y, z axis tests.
+// We also replace the hard coded separating axis test with a more general form to simplify the implementation,
+// will replace them if encounter performance issue.
 bool TriangleAABBTest(FVector3f V0, FVector3f V1, FVector3f V2, FVector3f BoxCenter, FVector3f BoxHalfWidth)
 {
     // Convert triangle to AABB's local space

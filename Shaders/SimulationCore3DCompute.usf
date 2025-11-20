@@ -414,6 +414,7 @@ void LBM_Collision3D(
             debugValue.xyz = float3(0.5, 0.5, 0.5);
         }
     }
+    
     GetVelocityAndDensity(group_tid_offset, u, p);
     debugValue.xyz = float3(length(u), 0., p);
     if (IsNaN(p) || IsNaN(length(u)) )

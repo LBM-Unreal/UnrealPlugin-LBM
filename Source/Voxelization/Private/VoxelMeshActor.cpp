@@ -1,6 +1,6 @@
 // VoxelMeshActor.cpp
 #include "VoxelMeshActor.h"
-#include "Voxelization.h"
+#include "VoxelizationModule.h"
 
 
 
