@@ -104,7 +104,7 @@ void StoreDebugTexture2D(in uint texelX, in uint texelY, in float4 value)
 
 void StoreDebugTexture3D(in uint texelX, in uint texelY, in uint texelZ, in float4 value)
 {
-    //DebugTexture3D[uint3(texelX, texelY, texelZ)] = value;
+    DebugTexture3D[uint3(texelX, texelY, texelZ)] = value;
 }
 
 void ReadBoundaryValues3D(in uint texelX, in uint texelY, in uint texelZ, out float2 u, out float p)
@@ -352,7 +352,7 @@ void LBM_BoundaryTreatment3D(
         float boundary_left;
         ReadSimulationData3D(group_tid_offset, texelX + offset.x, texelY + offset.y, texelZ + offset.z, boundary_left);
     }
-    ReverseF(group_tid_offset);
+    //ReverseF(group_tid_offset);
     StoreSimulationData3D(group_tid_offset, texelX, texelY, texelZ, boundary);
     if (texelZ == DEBUG_TEXTURE_SLICE)
     {
@@ -425,7 +425,10 @@ void LBM_Collision3D(
     {
         debugValue.xyz = float3(0., 0., 1.);
     }
-    
+    if (boundary >= 1)
+    {
+        debugValue.xyz = float3(1., 1., 1.);
+    }
     // collision
     float cs = 1. / sqrt(3.);
     for (int i = 0; i < Q; i++)
