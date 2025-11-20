@@ -4,9 +4,6 @@
 float Scale;
 float Translate;
 
-RWStructuredBuffer<float> InputBuffer;
-RWStructuredBuffer<float> OutputBuffer;
-RWTexture2DArray<float4> SimulationDataArray;
 RWTexture2D<float4> DebugTexture;
 RWStructuredBuffer<int> DebugBuffer;
 
@@ -20,33 +17,88 @@ RWStructuredBuffer<int> DebugBuffer;
 //
 ///////////////
 
+#define ELEMENT_DIM 14
+
+float3 hsv2rgb(float3 c)
+{
+    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
+}
+
+float3 ColorByValue(float val)
+{
+    return hsv2rgb(float3(val, 1., 1.));
+}
+
 void StoreSimulationData2D(in uint texelX, in uint texelY, in float f[9], in int boundary)
 {
     for (int i = 0; i < 9; i++)
     {
-        DebugBuffer[i + 10 * texelX + 10 * 256 * texelY] = asint(f[i]);
+        DebugBuffer[i + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY] = asint(f[i]);
     }
-    DebugBuffer[9 + 10 * texelX + 10 * 256 * texelY] = boundary;
+    DebugBuffer[9 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY] = boundary;
 }
 
 void StoreSimulationDataIndex2D(in uint texelX, in uint texelY, in int index, in float f_i)
 {
     int _;
-    InterlockedExchange(DebugBuffer[index + 10 * texelX + 10 * 256 * texelY], asint(f_i), _);
+    InterlockedExchange(DebugBuffer[index + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY], asint(f_i), _);
 }
 
 void ReadSimulationDataIndex2D(in uint texelX, in uint texelY, in int index, out float f_i)
 {
-    f_i = asfloat(DebugBuffer[index + 10 * texelX + 10 * 256 * texelY]);
+    f_i = asfloat(DebugBuffer[index + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY]);
 }
 
 void ReadSimulationData2D(in uint texelX, in uint texelY, out float f[9], out int boundary)
 {
     for (int i = 0; i < 9; i++)
     {
-        f[i] = asfloat(DebugBuffer[i + 10 * texelX + 10 * 256 * texelY]);
+        f[i] = asfloat(DebugBuffer[i + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY]);
     }
-    boundary = DebugBuffer[9 + 10 * texelX + 10 * 256 * texelY];
+    boundary = DebugBuffer[9 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY];
+}
+
+struct SurfaceProperty
+{
+    float phi;
+    float m;
+    float m_ex;
+    bool flg_fluid;
+    bool flg_interface;
+    bool flg_gas;
+    bool flg_solid;
+    bool flg_i_to_g;
+    bool flg_i_to_f;
+};
+void ReadSurfaceProperty(in uint texelX, in uint texelY, out SurfaceProperty OutProperty) // see Lehmann2019 chapter 6
+{
+    OutProperty.phi = asfloat(DebugBuffer[10 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY]);
+    OutProperty.m = asfloat(DebugBuffer[11 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY]);
+    OutProperty.m_ex = asfloat(DebugBuffer[12 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY]);
+    uint flags = uint(DebugBuffer[13 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY]);
+    OutProperty.flg_fluid = flags & (1 << 2);
+    OutProperty.flg_interface = flags & (1 << 1);
+    OutProperty.flg_gas = flags & (1 << 0);
+    OutProperty.flg_solid = flags & (1 << 3);
+    OutProperty.flg_i_to_g = flags & (1 << 4);
+    OutProperty.flg_i_to_f = flags & (1 << 5);
+}
+
+void StoreSurfaceProperty(in uint texelX, in uint texelY, in SurfaceProperty InProperty)
+{
+    DebugBuffer[10 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY] = asint(InProperty.phi);
+    DebugBuffer[11 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY] = asint(InProperty.m);
+    DebugBuffer[12 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY] = asint(InProperty.m_ex);
+    uint flags = 0u;
+    flags = flags | (uint(InProperty.flg_fluid) << 2);
+    flags = flags | (uint(InProperty.flg_interface) << 1);
+    flags = flags | (uint(InProperty.flg_gas) << 0);
+    flags = flags | (uint(InProperty.flg_solid) << 3);
+    flags = flags | (uint(InProperty.flg_i_to_g) << 4);
+    flags = flags | (uint(InProperty.flg_i_to_f) << 5);
+    DebugBuffer[13 + ELEMENT_DIM * texelX + ELEMENT_DIM * 256 * texelY] = flags;
 }
 
 float sphere(float2 p, float2 center, float radius)
@@ -61,11 +113,8 @@ void FunctionMultiply(
 	uint GroupIndex : SV_GroupIndex,
 	uint3 GroupID: SV_GroupID)
 {
-    OutputBuffer[tid.x] = InputBuffer[tid.x] * Scale + Translate;
     uint texelX = GroupID.x * 16 + tid.x;
     uint texelY = GroupID.y * 16 + tid.y;
-    SimulationDataArray[uint3(texelX, texelY, 0)].x = (float) tid.x / 16.;
-    SimulationDataArray[uint3(texelX, texelY, 0)].y = (float) tid.y / 16.;
 }
 
 float2 GetBoundaryVelocity(uint texelX, uint texelY)
@@ -74,6 +123,32 @@ float2 GetBoundaryVelocity(uint texelX, uint texelY)
     return maxU;
 }
 
+void DisplaySurfaceProp(uint texelX, uint texelY, SurfaceProperty surfaceProp)
+{
+    float4 debugValue = float4(0., 0., 0., 1.);
+    if (surfaceProp.flg_fluid)
+    {
+        debugValue = float4(0., 0., 1., 1.);
+    }
+    else if (surfaceProp.flg_interface)
+    {
+        debugValue = float4(0., 1., 0., 1.);
+    }
+    else if (surfaceProp.flg_gas)
+    {
+        debugValue = float4(1., 0., 0., 1.);
+    }
+    else if (surfaceProp.flg_solid)
+    {
+        debugValue = float4(1., 1., 1., 1.);
+    }
+    DebugTexture[uint2(texelX, texelY)] = debugValue;
+}
+
+void DisplayDebug(uint texelX, uint texelY, float3 color)
+{
+    DebugTexture[uint2(texelX, texelY)] = float4(color, 1.);
+}
 
 [numthreads(16, 16, 1)]
 void LBM_InitialState(
@@ -118,7 +193,7 @@ void LBM_InitialState(
     
     
     float2 u = float2(0., 0.);
-    float p = 0.03;
+    float rho = 1.;
     float feq[9];
     
     int boundary = 0;
@@ -147,41 +222,119 @@ void LBM_InitialState(
     }
     // inside solid boundary
     float2 center = float2(128., 128.);
-    float radius = 10;
+    float radius = 30;
+    SurfaceProperty Property;
+    Property.phi = 0.0;
+    Property.m = 0.;
+    Property.m_ex = 0.;
+    Property.flg_fluid = false;
+    Property.flg_interface = false;
+    Property.flg_gas = false;
+    Property.flg_solid = false;
+    Property.flg_i_to_g = false;
+    Property.flg_i_to_f = false;
     float d = sphere(float2(texelX, texelY), center, radius);
     if (d < 0.)
     {
-        boundary = 1;
-        for (int i = 0; i < 9; i++)
-        {
-            feq[i] = d;
-        }
+        boundary = 0;
+        u = float2(0.2, 0.);
+        // fluid node
+        Property.phi = 1.0;
+        Property.flg_fluid = true;
+        Property.m = 1.0;
+    }
+    else
+    {
+        Property.phi = 0.0;
+        Property.flg_gas = true;
+        Property.m = 0.0;
     }
     if (texelX == 0)
     {
         boundary = 2; // type 2 lattice with fixed velocity
-        u = float2(0.1, 0.0);
-        p = 0.06;
-
+        u = float2(0.0, 0.0);
     }
+    
     if (texelX == 255 && texelY > 0 &&  texelY < 255)
     {
         boundary = 3;
     }
     
+    if (boundary >= 1)
+    {
+        Property.flg_solid = true;
+        Property.flg_gas = false;
+        Property.m = 0.0;
+        Property.phi = 0.0;
+    }
+    //StoreFluidFraction(texelX, texelY, fluidFraction);
     if (boundary == 0 || boundary == 2 || boundary == 3)
     {
         for (int i = 0; i < 9; i++)
         {
-            feq[i] = w[i] * p * (1. + 3. * dot(c[i], u) + 4.5 * pow(dot(c[i], u), 2.) - 1.5 * dot(u, u));
+            feq[i] = w[i] * rho * (1. + 3. * dot(c[i], u) + 4.5 * pow(dot(c[i], u), 2.) - 1.5 * dot(u, u));
         }
     }
-    
     StoreSimulationData2D(texelX, texelY, feq, boundary);
+    StoreSurfaceProperty(texelX, texelY, Property);
     
-    DebugTexture[uint2(texelX, texelY)].x = 0.;
+    DebugTexture[uint2(texelX, texelY)].x = 1.;
     DebugTexture[uint2(texelX, texelY)].y = 0.;
-    DebugTexture[uint2(texelX, texelY)].z = 0.;
+    DebugTexture[uint2(texelX, texelY)].z = 1.;
+}
+
+[numthreads(16, 16, 1)]
+void LBM_InitialInterface(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(-1., 0.),
+        float2(1., 0.),
+        float2(-1., 1.),
+        float2(0., 1.),
+        float2(1., 1.),
+    };
+    
+    SurfaceProperty surfaceProp;
+    ReadSurfaceProperty(texelX, texelY, surfaceProp);
+    if (!surfaceProp.flg_fluid)
+    {
+        DebugTexture[uint2(texelX, texelY)] = float4(1., 1., 0., 1.);
+        return;
+    }
+    bool toInterface = false;
+    for (int i = 1; i < 9; i++)
+    {
+        // check all neighbors
+        int2 c_i = int2((int) c[i].x, (int) c[i].y);
+        SurfaceProperty NeighborProperty;
+        ReadSurfaceProperty(texelX + c_i.x, texelY + c_i.y, NeighborProperty);
+        if (!NeighborProperty.flg_fluid && !NeighborProperty.flg_interface)
+        {
+            toInterface = true;
+            break;
+        }
+    }
+    if (toInterface)
+    {
+        surfaceProp.flg_interface = true;
+        surfaceProp.flg_fluid = false;
+        surfaceProp.phi = 0.5;
+        surfaceProp.m = 0.5;
+    }
+    DisplaySurfaceProp(texelX, texelY, surfaceProp);
+    StoreSurfaceProperty(texelX, texelY, surfaceProp);
 }
 
 [numthreads(16, 16, 1)]
@@ -235,7 +388,7 @@ bool IsNaN(float x)
     return !(x < 0.f || x > 0.f || x == 0.f);
 }
 
-void GetVelocityAndDensity(in float f[9], out float2 u, out float p)
+void GetVelocityAndDensity(in float f[9], out float2 u, out float rho)
 {
     float2 c[9] =
     {
@@ -249,23 +402,24 @@ void GetVelocityAndDensity(in float f[9], out float2 u, out float p)
         float2(0., 1.),
         float2(1., 1.),
     };
-    p = 0.;
+    rho = 0.;
     u = float2(0., 0.);
     for (int i = 0; i < 9; i++)
     {
-        p += f[i];
+        rho += f[i];
         u += c[i] * f[i];
     }
-    u = u / p;
+    u = u / rho;
 }
 
-float GetEquilibrium(float2 u, float p, float2 ci, float wi)
+float GetEquilibrium(float2 u, float rho, float2 ci, float wi)
 {
-    return wi * p * (1. + 3. * dot(ci, u) + 4.5 * pow(dot(ci, u), 2.) - 1.5 * dot(u, u));
+    return wi * rho * (1. + 3. * dot(ci, u) + 4.5 * pow(dot(ci, u), 2.) - 1.5 * dot(u, u));
 }
+
 
 [numthreads(16, 16, 1)]
-void LBM_Collision(
+void LBM_BoundaryTreatment(
 	uint3 DispatchThreadId : SV_DispatchThreadID,
 	uint3 tid : SV_GroupThreadID,
 	uint GroupIndex : SV_GroupIndex,
@@ -281,6 +435,7 @@ void LBM_Collision(
     
     uint texelX = DispatchThreadId.x;
     uint texelY = DispatchThreadId.y;
+    float4 debugValue = float4(0., 0., 0., 1.);
     
     // LBM constants
     float2 c[9] =
@@ -313,7 +468,7 @@ void LBM_Collision(
     float f[9];
     int boundary = 0;
     
-    ReadSimulationData2D(texelX, texelY, f, boundary);
+    ReadSimulationData2D(texelX, texelY, f, boundary);    
     float f_fake = -1. * (texelX + 256 * texelY);
     if (boundary == 1)
     {
@@ -330,15 +485,14 @@ void LBM_Collision(
     if (boundary == 2)
     {
         float2 u = float2(0.5, 0.);
-        float p = 0.06;
-        u = float2(0.1, 0.0);
-        p = 0.06;
+        float p = 1.;
+        u = float2(0.0, 0.0);
         for (int i = 0; i < 9; i++)
         {
             f[i] = w[i] * p * (1. + 3. * dot(c[i], u) + 4.5 * pow(dot(c[i], u), 2.) - 1.5 * dot(u, u));
         }
     }
-    if (boundary == 3 && texelY==1)
+    if (boundary == 3 && texelY == 1)
     {
         float boundary_left;
         ReadSimulationData2D(texelX - 1, texelY + 1, f, boundary_left);
@@ -353,30 +507,13 @@ void LBM_Collision(
         float boundary_left;
         ReadSimulationData2D(texelX - 1, texelY, f, boundary_left);
     }
-    if (boundary>=1) // no simulation inside solid 
+    if (boundary == 0)
     {
-        DebugTexture[uint2(texelX, texelY)] = float4(1., 1., 1., 1.);
-        for (int i = 1; i < 5; i++)
+        // bounce back
+        for (int i = 1; i < 9; i++)
         {
-            float temp = f[i];
-            f[i] = f[9 - i];
-            f[9 - i] = temp;
-        }
-        StoreSimulationData2D(texelX, texelY, f, boundary);
-        return;
-    }
-    //ReadSimulationData2D_2(texelX, texelY, f_streamed, boundary);
-    
-    
-    float p = 0.;
-    float2 u = float2(0., 0.);
-    
-    // boundary treatment
-    // bounce back
-    for (int i = 1; i < 9; i++)
-    {
-        if (f[i] < 0. && f[9-i]<0.)
-        {
+            if (f[i] < 0. && f[9 - i] < 0.)
+            {
             // linear interpolated bounce-back, Tao et al 2018
             // f_streamed[i] stores negtive value of distance from interior grid point to boundary
             /*float q = 1. + f_streamed[i] / length(c[i]);
@@ -390,31 +527,555 @@ void LBM_Collision(
             f_streamed[i] = f_b;
             */
             // classical bounce-back
-            f[i] = 0.;
-            f[9 - i] = 0.;
-            DebugTexture[uint2(texelX, texelY)].xyz = float3(0.,1.,0.);
-        }
-        else if(f[i]<0.)
-        {
-            f[i] = f[9 - i];
-            DebugTexture[uint2(texelX, texelY)].xyz = float3(1., 0., 0.);
+                f[i] = 0.;
+                f[9 - i] = 0.;
+            }
+            else if (f[i] < 0.)
+            {
+                f[i] = f[9 - i];
+            }
         }
     }
-    GetVelocityAndDensity(f, u, p);
-    DebugTexture[uint2(texelX, texelY)].xyz = float3(length(u), 0., p);
-    if (IsNaN(p) || IsNaN(length(u)) || p == 0. || length(u)==0.)
+    StoreSimulationData2D(texelX, texelY, f, boundary);
+}
+
+
+[numthreads(16, 16, 1)]
+void LBM_Collision(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    /*
+    
+    1 2 3 
+    4 0 5
+    6 7 8
+    
+    */
+    
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    float4 debugValue = float4(0., 0., 0., 1.);
+    SurfaceProperty surfaceProp;
+    ReadSurfaceProperty(texelX, texelY, surfaceProp);
+    // LBM constants
+    float2 c[9] =
     {
-        DebugTexture[uint2(texelX, texelY)].xyz = float3(1.,1.,1.);
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(-1., 0.),
+        float2(1., 0.),
+        float2(-1., 1.),
+        float2(0., 1.),
+        float2(1., 1.),
+    };
+    
+    float w[9] =
+    {
+        4. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+    };
+    if (!surfaceProp.flg_fluid && !surfaceProp.flg_interface)
+    {
+        if (surfaceProp.flg_gas)
+        {
+            float f[9];
+            float2 u = float2(0., 0.);
+            float rho = 1.;
+            for (int i = 0; i < 9; i++)
+            {
+                f[i] = GetEquilibrium(u, rho, c[i], w[i]);
+            }
+            
+            StoreSimulationData2D(texelX, texelY, f, 0);
+        }
+        return;
     }
+    
+    
+    // lbm distribution functions
+    float f[9];
+    int boundary = 0;
+    
+    ReadSimulationData2D(texelX, texelY, f, boundary);
+    
+    if (boundary >= 1)
+    {
+        return;
+    }
+    
+    float rho = 0.;
+    float2 u = float2(0., 0.);
+    
+    GetVelocityAndDensity(f, u, rho);
     
     // collision
     float cs = 1. / sqrt(3.);
     float feq[9];
     for (int i = 0; i < 9; i++)
     {
-        feq[i] = GetEquilibrium(u, p, c[i], w[i]);
+        feq[i] = GetEquilibrium(u, rho, c[i], w[i]);
         f[i] = f[i] - (f[i] - feq[i]) / 0.6;
     }
+    StoreSimulationData2D(texelX, texelY, f, boundary);
+}
+
+[numthreads(16, 16, 1)]
+void LBM_AdvectMass(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(-1., 0.),
+        float2(1., 0.),
+        float2(-1., 1.),
+        float2(0., 1.),
+        float2(1., 1.),
+    };
+    float w[9] =
+    {
+        4. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+    };
+    float f[9];
+    float f_temp[9];
+    int boundary = 0;
+    
+    float rho = 0.;
+    float rho_gas = 1.; // TODO: using curvature
+    float2 u = float2(0., 0.);
+    ReadSimulationData2D(texelX, texelY, f, boundary);
+    GetVelocityAndDensity(f, u, rho);
+    
+    SurfaceProperty surfaceProp;
+    ReadSurfaceProperty(texelX, texelY, surfaceProp);
+    
+    if (!surfaceProp.flg_fluid && !surfaceProp.flg_interface)
+    {
+        return;
+    }
+    
+    // populate f_temp, aka DF after streaming
+    
+    for (int i = 1; i < 9; i++)
+    {
+        int2 c_i = int2((int) c[i].x, (int) c[i].y);
+        ReadSimulationDataIndex2D(texelX - c_i.x, texelY - c_i.y, i, f_temp[i]);
+        SurfaceProperty NeighborProperty;
+        ReadSurfaceProperty(texelX - c_i.x, texelY - c_i.y, NeighborProperty);
+        if (NeighborProperty.flg_solid)
+        {
+            f_temp[i] = GetEquilibrium(float2(0., 0.), rho, c[i], w[i]);
+        }
+        else if (NeighborProperty.flg_gas)
+        {
+            f_temp[i] = 
+              GetEquilibrium(float2(0., 0.), rho_gas, c[i], w[i])
+              + GetEquilibrium(float2(0., 0.), rho_gas, c[9 - i], w[9 - i]) + f[9 - i];
+        }
+    }
+    
+    // add neighbor excess mass
+    for (int i = 1; i < 9; i++)
+    {
+        int2 c_i = int2((int) c[i].x, (int) c[i].y);
+        SurfaceProperty NeighborProperty;
+        ReadSurfaceProperty(texelX + c_i.x, texelY + c_i.y, NeighborProperty);
+        surfaceProp.m += NeighborProperty.m_ex;
+    }
+    
+    // mass advection (Lehmann2019 chapter 6.2)
+    if (surfaceProp.flg_fluid)
+    {
+        for (int i = 1; i < 9; i++)
+        {
+            int2 c_i = int2((int) c[i].x, (int) c[i].y);
+            // using grid DF before streaming, according to HOME-FS-LBM 2025 Eq (9)
+            surfaceProp.m += f_temp[9 - i] - f[i];
+        }
+    }
+    else if (surfaceProp.flg_interface)
+    {
+        for (int i = 1; i < 9; i++)
+        {
+            int2 c_i = int2((int) c[i].x, (int) c[i].y);
+            SurfaceProperty NeighborProperty;
+            ReadSurfaceProperty(texelX + c_i.x, texelY + c_i.y, NeighborProperty);
+            if (NeighborProperty.flg_fluid)
+            {
+                surfaceProp.m += f_temp[9 - i] - f[i];
+            }
+            else if (NeighborProperty.flg_gas)
+            {
+                // no mass exchange, but reconstruct DF according to Eq (87)
+                StoreSimulationDataIndex2D(texelX - c_i.x, texelY - c_i.y, i, f_temp[i]);
+            }
+            else if (NeighborProperty.flg_interface)
+            {
+                surfaceProp.m += (f_temp[9 - i] - f[i]) * 0.5 * (surfaceProp.phi + NeighborProperty.phi);
+            }
+        }
+        
+        // mark transition flags
+        if (surfaceProp.m + surfaceProp.m_ex > 1.0 + 0.001)
+        {
+            surfaceProp.flg_i_to_f = true;
+        }
+        else if (surfaceProp.m + surfaceProp.m_ex < 0.0 - 0.001)
+        {
+            surfaceProp.flg_i_to_g = true;
+        }
+    }
+    //DisplayDebug(texelX, texelY, float3(surfaceProp.m, 0., 1.));
+    StoreSurfaceProperty(texelX, texelY, surfaceProp);
+}
+
+[numthreads(16, 16, 1)]
+void LBM_Surface_1(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(-1., 0.),
+        float2(1., 0.),
+        float2(-1., 1.),
+        float2(0., 1.),
+        float2(1., 1.),
+    };
+    
+    SurfaceProperty surfaceProp;
+    ReadSurfaceProperty(texelX, texelY, surfaceProp);
+    for (int i = 1; i < 9; i++)
+    {
+        // check all neighbors
+        int2 c_i = int2((int) c[i].x, (int) c[i].y);
+        SurfaceProperty NeighborProperty;
+        ReadSurfaceProperty(texelX + c_i.x, texelY + c_i.y, NeighborProperty);
+        if (NeighborProperty.flg_i_to_f && surfaceProp.flg_i_to_g && !surfaceProp.flg_gas)
+        {
+            surfaceProp.flg_i_to_g = false;
+        }
+        else if (NeighborProperty.flg_i_to_f && surfaceProp.flg_gas)
+        {
+            surfaceProp.flg_i_to_g = true; // convert to interface later while flag gas and i_to_g both exist
+        }
+    }
+    StoreSurfaceProperty(texelX, texelY, surfaceProp);
+}
+
+
+[numthreads(16, 16, 1)]
+void LBM_Surface_2(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    
+    if (texelX > 255 || texelY > 255)
+    {
+        return;
+    }
+    
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(-1., 0.),
+        float2(1., 0.),
+        float2(-1., 1.),
+        float2(0., 1.),
+        float2(1., 1.),
+    };
+    
+    float w[9] =
+    {
+        4. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 9.,
+        1. / 36.,
+        1. / 9.,
+        1. / 36.,
+    };
+    
+    SurfaceProperty surfaceProp;
+    ReadSurfaceProperty(texelX, texelY, surfaceProp);
+    
+    // PART 1: Handle lattice points flagged with interface →gas AND gas
+    // These are gas lattice points that need to be turned into interface
+    if (surfaceProp.flg_i_to_g && surfaceProp.flg_gas)
+    {
+        // Initialize previously undefined DDFs by calculating equilibrium DDFs
+        // using average density and velocity of all fluid OR interface neighbors
+        float rho_avg = 0.;
+        float2 u_avg = float2(0., 0.);
+        int neighborCount = 0;
+        
+        // Iterate through all neighbors
+        for (int i = 1; i < 9; i++)
+        {
+            int2 c_i = int2((int) c[i].x, (int) c[i].y);
+            uint neighborX = texelX + c_i.x;
+            uint neighborY = texelY + c_i.y;
+            
+            // Check bounds
+            if (neighborX > 255 || neighborY > 255)
+            {
+                continue;
+            }
+            
+            SurfaceProperty neighborProp;
+            ReadSurfaceProperty(neighborX, neighborY, neighborProp);
+            
+            // Check if neighbor is fluid OR interface (which have well-defined properties)
+            if (neighborProp.flg_fluid || neighborProp.flg_interface)
+            {
+                // Read distribution functions and compute density/velocity
+                float f_neighbor[9];
+                int boundary_neighbor = 0;
+                ReadSimulationData2D(neighborX, neighborY, f_neighbor, boundary_neighbor);
+                
+                float rho_neighbor = 0.;
+                float2 u_neighbor = float2(0., 0.);
+                GetVelocityAndDensity(f_neighbor, u_neighbor, rho_neighbor);
+                
+                // Accumulate for averaging
+                rho_avg += rho_neighbor;
+                u_avg += u_neighbor;
+                neighborCount++;
+            }
+        }
+        
+        // Compute average if we have neighbors
+        if (neighborCount > 0)
+        {
+            rho_avg /= float(neighborCount);
+            u_avg /= float(neighborCount);
+            
+            // Read existing boundary first
+            int boundary = 0;
+            float f_old[9];
+            ReadSimulationData2D(texelX, texelY, f_old, boundary);
+            
+            // Initialize DDFs with equilibrium distribution functions
+            float f[9];
+            for (int i = 0; i < 9; i++)
+            {
+                f[i] = GetEquilibrium(u_avg, rho_avg, c[i], w[i]);
+            }
+            
+            // Store the initialized DDFs (boundary remains unchanged)
+            StoreSimulationData2D(texelX, texelY, f, boundary);
+            
+            // Note: We do NOT change the flags here to avoid race condition
+            // The lattice point remains with interface →gas AND gas flags set
+            // Conversion will be done later
+        }
+    }
+    
+    // PART 2: Handle lattice points ONLY flagged with interface →gas (not gas)
+    else if (surfaceProp.flg_i_to_g && !surfaceProp.flg_gas)
+    {
+        // Check all neighbors
+        for (int i = 1; i < 9; i++)
+        {
+            int2 c_i = int2((int) c[i].x, (int) c[i].y);
+            uint neighborX = texelX + c_i.x;
+            uint neighborY = texelY + c_i.y;
+            
+            // Check bounds
+            if (neighborX > 255 || neighborY > 255)
+            {
+                continue;
+            }
+            
+            SurfaceProperty neighborProp;
+            ReadSurfaceProperty(neighborX, neighborY, neighborProp);
+            
+            // If neighbor is flagged with either fluid or interface →fluid
+            if (neighborProp.flg_fluid || neighborProp.flg_i_to_f)
+            {
+                // Clear both fluid and interface →fluid flags
+                neighborProp.flg_fluid = false;
+                neighborProp.flg_i_to_f = false;
+                // Set interface flag, turning neighbor into interface point
+                neighborProp.flg_interface = true;
+                
+                StoreSurfaceProperty(neighborX, neighborY, neighborProp);
+            }
+        }
+    }
+}
+
+[numthreads(16, 16, 1)]
+void LBM_Surface_3(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    
+    if (texelX > 255 || texelY > 255)
+    {
+        return;
+    }
+    float2 c[9] =
+    {
+        float2(0., 0.),
+        float2(-1., -1.),
+        float2(0., -1.),
+        float2(1., -1.),
+        float2(-1., 0.),
+        float2(1., 0.),
+        float2(-1., 1.),
+        float2(0., 1.),
+        float2(1., 1.),
+    };
+    float rho_fluid = 1.0; // placeholder for fluid density
+    float2 u = float2(0., 0.);
+    SurfaceProperty surfaceProp;
+    ReadSurfaceProperty(texelX, texelY, surfaceProp);
+    surfaceProp.m_ex = 0.;
+    // PART 1: Change lattice points with interface →gas AND gas flags to interface
+    // Clear the interface →gas AND gas flags and set the interface flag
+    if (surfaceProp.flg_i_to_g && surfaceProp.flg_gas)
+    {
+        // Clear interface →gas flag
+        surfaceProp.flg_i_to_g = false;
+        // Clear gas flag
+        surfaceProp.flg_gas = false;
+        // Set interface flag
+        surfaceProp.flg_interface = true;
+        
+        // Immediately write the flag to memory
+        StoreSurfaceProperty(texelX, texelY, surfaceProp);
+    }
+    if(surfaceProp.flg_interface && surfaceProp.flg_i_to_f)
+    {
+        // Clear flags and set to fluid
+        surfaceProp.flg_i_to_f = false;
+        surfaceProp.flg_interface = false;
+        surfaceProp.flg_fluid = true;
+        
+        surfaceProp.m_ex = surfaceProp.m - rho_fluid; // carry over excess mass
+        surfaceProp.m = rho_fluid;
+        surfaceProp.phi = 1.0;
+    }else if(surfaceProp.flg_interface && surfaceProp.flg_i_to_g)
+    {
+        // Clear flags and set to gas
+        surfaceProp.flg_i_to_g = false;
+        surfaceProp.flg_interface = false;
+        surfaceProp.flg_gas = true;
+        
+        surfaceProp.m_ex = surfaceProp.m; // carry over excess mass
+        surfaceProp.m = 0.0;
+        surfaceProp.phi = 0.0;
+    }
+    else if(surfaceProp.flg_interface)
+    {
+        if(surfaceProp.m> rho_fluid + 0.001)
+        {
+            surfaceProp.m_ex = surfaceProp.m - rho_fluid - 0.001;
+        }
+        else if(surfaceProp.m < 0.)
+        {
+            surfaceProp.m_ex = surfaceProp.m + 0.001;
+        }
+        surfaceProp.m = clamp(surfaceProp.m, 0., rho_fluid);
+        // Update phi
+        surfaceProp.phi = clamp(surfaceProp.m / rho_fluid, 0., 1.);
+    }
+    int count = 0;
+    for (int i = 1; i < 9; i++)
+    {
+        int2 c_i = int2((int) c[i].x, (int) c[i].y);
+        uint neighborX = texelX + c_i.x;
+        uint neighborY = texelY + c_i.y;
+            
+        // Check bounds
+        if (neighborX > 255 || neighborY > 255)
+        {
+            continue;
+        }
+        SurfaceProperty nbProp;
+        ReadSurfaceProperty(neighborX, neighborY, nbProp);
+        if (nbProp.flg_fluid || nbProp.flg_interface || nbProp.flg_i_to_f || (nbProp.flg_i_to_g && nbProp.flg_gas))
+        {
+            if (!(nbProp.flg_i_to_g && !nbProp.flg_gas))
+            {
+                count += 1;
+            }
+        }
+    }
+    surfaceProp.m += count > 0 ? 0.0 : surfaceProp.m_ex;
+    surfaceProp.m_ex = count > 0 ? surfaceProp.m_ex / count : 0.0;
+    DisplaySurfaceProp(texelX, texelY, surfaceProp);
+    StoreSurfaceProperty(texelX, texelY, surfaceProp);
+}
+
+
+[numthreads(16, 16, 1)]
+void LBM_Reverse_DF(
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 tid : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex,
+	uint3 GroupID : SV_GroupID)
+{    
+    uint texelX = DispatchThreadId.x;
+    uint texelY = DispatchThreadId.y;
+    
+    float f[9];
+    int boundary = 0;
+    
+    ReadSimulationData2D(texelX, texelY, f, boundary);
+    
+    // correct the DF, so this kernel must be called after streaming
     for (int i = 1; i < 5; i++)
     {
         float temp = f[i];
@@ -523,6 +1184,15 @@ void LBM_MR_InitialState(
     {
         boundary = 3;
     }
+    float fluidFraction = 0.0;
+    if (texelX < 128)
+    {
+        fluidFraction = 1.0;
+    }
+    if(texelX==128)
+    {
+        fluidFraction = 0.5;
+    }
     StoreMomentRepSimulationData2D(texelX, texelY, rho, u, float3(0., 0., 0.), boundary);
     DebugTexture[uint2(texelX, texelY)].x = length(u);
     DebugTexture[uint2(texelX, texelY)].y = 0.;
@@ -595,7 +1265,6 @@ void LBM_MR_Streaming_Collision(
     {
         // deal with four corners in this thread
         ReadMomentRepSimulationData2D(texelX - 1, texelY - 1, rho, u_, m_, boundary2);
-        // based on 2023 Ferrari equation (10)
         for (int i = 0; i < 9; i++)
         {
             f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
@@ -603,9 +1272,7 @@ void LBM_MR_Streaming_Collision(
     
         StoreShared(tid.x - 1 + 1, tid.y -1 + 1, f);
         
-        // deal with four corners in this thread
         ReadMomentRepSimulationData2D(texelX + block_x_dim, texelY - 1, rho, u_, m_, boundary2);
-        // based on 2023 Ferrari equation (10)
         for (int i = 0; i < 9; i++)
         {
             f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
@@ -613,9 +1280,7 @@ void LBM_MR_Streaming_Collision(
     
         StoreShared(tid.x + block_x_dim + 1, tid.y - 1 + 1, f);
         
-        // deal with four corners in this thread
         ReadMomentRepSimulationData2D(texelX - 1, texelY + block_y_dim, rho, u_, m_, boundary2);
-        // based on 2023 Ferrari equation (10)
         for (int i = 0; i < 9; i++)
         {
             f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));
@@ -623,9 +1288,7 @@ void LBM_MR_Streaming_Collision(
     
         StoreShared(tid.x - 1 + 1, tid.y + block_y_dim + 1, f);
         
-        // deal with four corners in this thread
         ReadMomentRepSimulationData2D(texelX + block_x_dim, texelY + block_y_dim, rho, u_, m_, boundary2);
-        // based on 2023 Ferrari equation (10)
         for (int i = 0; i < 9; i++)
         {
             f[i] = rho * w[i] * (1. + 3. * dot(c[i], u_) + Get2ndOrderDistributionAtIndexByMoments(c[i], m_));

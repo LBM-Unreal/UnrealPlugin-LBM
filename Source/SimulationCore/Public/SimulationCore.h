@@ -4,14 +4,8 @@ class SIMULATIONCORE_API FSimulationShaderResource : public FRenderResource
 {
 	static FSimulationShaderResource* GInstance;
 public:
-	FRWBufferStructured InputBuffer;  // RWStructuredBuffer<float> InputBuffer;
-	FRWBufferStructured OutputBuffer; // RWStructuredBuffer<float> OutputBuffer;
 	FTextureRHIRef DebugTexture;
 	FUnorderedAccessViewRHIRef DebugTextureUAV;
-	FTextureRHIRef SimulationDataArray;
-	FUnorderedAccessViewRHIRef SimulationDataArrayUAV;
-	FTextureRHIRef SimulationDataArray2;
-	FUnorderedAccessViewRHIRef SimulationDataArray2UAV;
 	FRWBufferStructured DebugBuffer;
 	virtual void InitRHI(FRHICommandListBase& RHICmdList) override;
 
@@ -135,6 +129,41 @@ void SIMULATIONCORE_API DispatchLBMMRInitialState_RenderThread(
 	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
 
 void SIMULATIONCORE_API DispatchLBMMRStreamingCollision_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMBoundaryTreatment_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMInitialInterface_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMAdvectMass_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMSurface1_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMSurface2_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMSurface3_RenderThread(
+	FRHICommandList& RHICmdList,
+	FSimulationShaderResource* Resource,
+	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
+
+void SIMULATIONCORE_API DispatchLBMReverseDF_RenderThread(
 	FRHICommandList& RHICmdList,
 	FSimulationShaderResource* Resource,
 	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);

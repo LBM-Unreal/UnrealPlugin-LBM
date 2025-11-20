@@ -33,26 +33,15 @@ public:
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Debug Texture Value"), Category = "LBM Sim")
 	static SIMULATIONBP_API void GetDebugTextureValue(UTexture* OutTexture)
 	{
-		FlushRenderingCommands();
 		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture](FRHICommandListImmediate& RHICmdList)
-		{
-			FRHICopyTextureInfo CopyInfo;
-			CopyInfo.Size = {256,256,1};
-			RHICmdList.CopyTexture(FSimulationShaderResource::Get()->DebugTexture, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
-		});
-		FlushRenderingCommands();
-	}
-
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Grab Output Texture By Array Id"), Category = "LBM Sim")
-	static SIMULATIONBP_API void GrabOutputTextureByArrayId(UTexture* OutTexture, int Index)
-	{
-		ENQUEUE_RENDER_COMMAND(FGetTexVal)([OutTexture, Index](FRHICommandListImmediate& RHICmdList)
 			{
+				FRHITexture* SrcTex = FSimulationShaderResource::Get()->DebugTexture;
+				FRHITexture* DstTex = OutTexture->GetResource()->GetTexture2DRHI();
 				FRHICopyTextureInfo CopyInfo;
 				CopyInfo.Size = { 256,256,1 };
-				CopyInfo.SourceSliceIndex = Index;
-				RHICmdList.CopyTexture(FSimulationShaderResource::Get()->SimulationDataArray, OutTexture->GetResource()->GetTexture2DRHI(), CopyInfo);
+				RHICmdList.CopyTexture(SrcTex, DstTex, CopyInfo);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Start Renderdoc"), Category = "LBM Sim")
@@ -62,6 +51,7 @@ public:
 				UE_LOG(LogTemp, Warning, TEXT("RDC saved in %s"), *FString(FPaths::Combine(FPaths::ProjectDir(), TEXT("Captures"))));
 				IRenderDocPlugin::Get().BeginCapture(&RHICmdList, 0, FPaths::Combine(FPaths::ProjectDir(), TEXT("Captures")));
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "End Renderdoc"), Category = "LBM Sim")
@@ -70,6 +60,7 @@ public:
 			{
 				IRenderDocPlugin::Get().EndCapture(&RHICmdList);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Update Resource"), Category = "LBM Sim")
@@ -78,6 +69,7 @@ public:
 			{
 				FSimulationShaderResource::Get()->UpdateRHI(RHICmdList);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM InitialState"), Category = "LBM Sim")
@@ -86,6 +78,7 @@ public:
 			{
 				DispatchLBMInitalState_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Streaming"), Category = "LBM Sim")
@@ -94,6 +87,7 @@ public:
 			{
 				DispatchLBMStreaming_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Collision"), Category = "LBM Sim")
@@ -102,6 +96,16 @@ public:
 			{
 				DispatchLBMCollision_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
 			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Advect Mass"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMAdvectMass() {
+		ENQUEUE_RENDER_COMMAND(FLBMAdvectMass)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMAdvectMass_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR InitialState"), Category = "LBM Sim")
@@ -110,6 +114,7 @@ public:
 			{
 				DispatchLBMMRInitialState_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR Streaming Collision"), Category = "LBM Sim")
@@ -118,6 +123,62 @@ public:
 			{
 				DispatchLBMMRStreamingCollision_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 63, 63, 1); // margin the last row/col of cells
 			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Boundary Treatment"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMBoundaryTreatment() {
+		ENQUEUE_RENDER_COMMAND(FLBMBoundaryTreatment)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMBoundaryTreatment_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+			});
+		FlushRenderingCommands();
+	}
+	
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Initial Interface"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMInitialInterface() {
+		ENQUEUE_RENDER_COMMAND(FLBMInitialInterface)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMInitialInterface_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Surface 1"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMSurface1() {
+		ENQUEUE_RENDER_COMMAND(FLBMSurface1)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMSurface1_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+				RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Surface 2"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMSurface2() {
+		ENQUEUE_RENDER_COMMAND(FLBMSurface2)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMSurface2_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Surface 3"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMSurface3() {
+		ENQUEUE_RENDER_COMMAND(FLBMSurface3)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMSurface3_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Reverse DF"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMReverseDF() {
+		ENQUEUE_RENDER_COMMAND(FLBMReverseDF)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMReverseDF_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 1);
+			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Debug Texture Value 3D"), Category = "LBM Sim")
@@ -174,6 +235,7 @@ public:
 					FSimulationShaderResource3D::Get()->TextureSize[2] / 4
 				);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Streaming 3D"), Category = "LBM Sim")
@@ -186,6 +248,7 @@ public:
 					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
 					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM Collision 3D"), Category = "LBM Sim")
@@ -199,6 +262,7 @@ public:
 					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
 					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
 			});
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM BoundaryTreatment 3D"), Category = "LBM Sim")
@@ -211,6 +275,7 @@ public:
 					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
 					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
 			});
+		FlushRenderingCommands();
 	}
 
 
