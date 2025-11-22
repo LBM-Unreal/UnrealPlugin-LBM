@@ -315,4 +315,30 @@ public:
 					(SimDim.Z + BlockSize - 1) / BlockSize);
 			});
 	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor GPU"), Category = "LBM Sim")
+	static SIMULATIONBP_API void VoxelizeActorGPU(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin)
+	{
+		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin](FRHICommandListImmediate& RHICmdList)
+			{
+				auto* VoxelGridResouce = FVoxelGridResource::Get();
+				auto* SimResource = FSimulationShaderResource3D::Get();
+				auto SimDim = SimResource->Params.SimDimensions;
+				constexpr int BlockSize = 4;
+
+				// Clear Buffer
+				ClearVoxelGridBuffer_RenderThread(RHICmdList, VoxelGridResouce);
+
+				// Voxelize
+				DispatchVoxelizeMesh_RenderThread(RHICmdList, VoxelGridResouce, SMActor, Origin, FIntVector(GridDim));
+
+				// Copy to Simulation Buffer
+				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList,
+					VoxelGridResouce,
+					SimResource->DebugBuffer.UAV, SimDim,
+					(SimDim.X + BlockSize - 1) / BlockSize,
+					(SimDim.Y + BlockSize - 1) / BlockSize,
+					(SimDim.Z + BlockSize - 1) / BlockSize);
+			});
+	}
 };

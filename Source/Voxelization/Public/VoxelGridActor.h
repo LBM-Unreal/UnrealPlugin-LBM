@@ -32,7 +32,7 @@ public:
 
 
     UFUNCTION(CallInEditor)
-    void TriggerDebugFunc();
+    void CopyBufferToCPU();
 
     UFUNCTION(CallInEditor)
     void FillImmovableVoxelGrid();

@@ -3,31 +3,18 @@
 
 #include "VoxelGrid.h"
 #include "VoxelizationModule.h"
+#include "Engine/StaticMeshActor.h"
 
+/* ---------------------------------------- Shaders ---------------------------------------------------- */
 // FVoxelizationCS
 IMPLEMENT_SHADER_TYPE(, FVoxelizationCS, TEXT("/VoxelizationShaderDir/VoxelizationCoreCompute.usf"), TEXT("VoxelizeMesh"), SF_Compute);
-
-BEGIN_SHADER_PARAMETER_STRUCT(FCopyVoxelGridToSimParameters, )
-    // Buffers
-    SHADER_PARAMETER_UAV(RWStructuredBuffer<uint32>, CpySrcVoxelGridBuffer)
-    SHADER_PARAMETER_UAV(RWStructuredBuffer<int>, CpyDstDebugBuffer)
-
-    // Params
-    SHADER_PARAMETER(FIntVector3, SimDimension)
-	SHADER_PARAMETER(FIntVector3, VoxelGridDimension)
-END_SHADER_PARAMETER_STRUCT()
-
-class FCopyVoxelGridToSimCS: public FGlobalShader
-{
-    DECLARE_SHADER_TYPE(FCopyVoxelGridToSimCS, Global)
-    SHADER_USE_PARAMETER_STRUCT(FCopyVoxelGridToSimCS, FGlobalShader)
-
-	using FParameters = FCopyVoxelGridToSimParameters;
-};
-
+// FCopyVoxelGridToSimCS
 IMPLEMENT_SHADER_TYPE(, FCopyVoxelGridToSimCS, TEXT("/VoxelizationShaderDir/VoxelizationCoreCompute.usf"), TEXT("CpyVoxelGridToSimulation"), SF_Compute);
+// FVertexVelocityCS
+IMPLEMENT_SHADER_TYPE(, FVertexVelocityCS, TEXT("/VoxelizationShaderDir/VertexVelocityCompute.usf"), TEXT("CalculateVertexVelocity"), SF_Compute);
 
 
+/* ---------------------------------------- Functions ---------------------------------------------------- */
 void DispatchCopyVoxelGridToSim_RenderThread(
     FRHICommandList& RHICmdList,
     FVoxelGridResource* VoxelGridResource,
@@ -63,27 +50,76 @@ void DispatchCopyVoxelGridToSim_RenderThread(
 }
 
 
-void DispatchVoxelizeMesh_RenderThread(
+void VOXELIZATION_API DispatchVoxelizeMesh_RenderThread(
     FRHICommandList& RHICmdList,
-    class FVoxelizationShaderParameters* VoxelizationParameters)
+    FVoxelGridResource* VoxelGridResource,
+    AStaticMeshActor* SMActor,
+    FVector3f VoxelGridOrigin,
+    FIntVector3 VoxelGridDimension)
 {
-    FVoxelGridResource* VoxelGridResource = FVoxelGridResource::Get();
-
-    if (VoxelGridResource->GridDim != VoxelizationParameters->GridDim)
+    if (VoxelGridDimension != VoxelGridResource->GridDim)
     {
-        UE_LOG(LogVoxelization, Error, TEXT("DispatchCopyVoxelGridToSim_RenderThread: mismatched dimension: VoxelGrid[%d, %d, %d], SimulationBuffer[%d, %d, %d]"),
+        UE_LOG(LogVoxelization, Warning,
+            TEXT("DispatchVoxelizeMesh_RenderThread: mismatched dimension:VoxelGridBuffer[%d, %d, %d], specified voxel grid dimension[%d, %d, %d]. Stopped execution."),
             VoxelGridResource->GridDim.X, VoxelGridResource->GridDim.Y, VoxelGridResource->GridDim.Z,
-            VoxelizationParameters->GridDim.X, VoxelizationParameters->GridDim.Y, VoxelizationParameters->GridDim.Z)
+            VoxelGridDimension.X, VoxelGridDimension.Y, VoxelGridDimension.Z)
             return;
     }
 
     TShaderMapRef<FVoxelizationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
     SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 
-	SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), *VoxelizationParameters);
+    // Mesh data
+    const auto& MeshLOD0 = SMActor->GetStaticMeshComponent()->GetStaticMesh()->GetRenderData()->LODResources[0];
+    const FRawStaticIndexBuffer& IB = MeshLOD0.IndexBuffer;
+    const FPositionVertexBuffer& VB = MeshLOD0.VertexBuffers.PositionVertexBuffer;
+
+	{
+        // Create SRV for mesh index buffer
+        FShaderResourceViewRHIRef MeshIndexBufferSRV;
+        FBufferRHIRef IndexBufferRHIRef = IB.IndexBufferRHI;
+        const bool bAllowCPUAccess = IB.GetAllowCPUAccess();
+        const bool bCanCreateIndexSRV = IndexBufferRHIRef.IsValid() &&
+            ((IndexBufferRHIRef->GetUsage() & EBufferUsageFlags::ShaderResource) == EBufferUsageFlags::ShaderResource) &&
+            bAllowCPUAccess;
+        if (bCanCreateIndexSRV)
+        {
+            bool b32Bit = IB.Is32Bit();
+            MeshIndexBufferSRV = RHICmdList.CreateShaderResourceView(
+                IndexBufferRHIRef,
+                FRHIViewDesc::CreateBufferSRV()
+                .SetType(FRHIViewDesc::EBufferType::Typed)
+                .SetFormat(b32Bit ? PF_R32_UINT : PF_R16_UINT));
+            UE_LOG(LogVoxelization, Display, TEXT("DispatchVoxelizeMesh_RenderThread: Created SRV from mesh IB"));
+        }
+        else
+        {
+            MeshIndexBufferSRV = nullptr;
+            UE_LOG(LogVoxelization, Warning, 
+                TEXT("DispatchVoxelizeMesh_RenderThread: Cannot create SRV for mesh IB, IndexBufferRHIRefValid(%d), EBufferUsageIsShared(%d), bAllowCPUAccess(%d). Stopped execution."),
+                IndexBufferRHIRef.IsValid(), (IndexBufferRHIRef->GetUsage() & EBufferUsageFlags::ShaderResource), bAllowCPUAccess);
+            return;
+        }
+
+		FVoxelizationShaderParameters Params{};
+
+    	Params.TriangleIndices = MeshIndexBufferSRV;
+    	Params.TriangleVerts = VB.GetSRV();
+    	Params.VoxelGridBuffer = VoxelGridResource->ImmovableMeshOccupancyBuffer.UAV;
+
+    	// Parameters
+    	Params.GridMin = VoxelGridOrigin;
+    	Params.GridDim = VoxelGridDimension;
+    	Params.LocalToWorld = static_cast<FMatrix44f>(SMActor->GetTransform().ToMatrixWithScale().GetTransposed());
+    	Params.TriangleCount = IB.GetNumIndices() / 3;
+    	Params.VertexCount = VB.GetNumVertices();
+    	Params.IndexCount = IB.GetNumIndices();
+
+    	SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Params);
+	}
 
     constexpr int32 ShaderBlockDimX = 4;
-    int32 Blocks = FMath::CeilToInt32(VoxelizationParameters->TriangleCount / static_cast<float>(ShaderBlockDimX));
+    int32 Blocks = FMath::CeilToInt32(IB.GetNumIndices() / static_cast<float>(ShaderBlockDimX));
     DispatchComputeShader(RHICmdList, Shader.GetShader(), Blocks, 1, 1);
 
     UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
@@ -91,49 +127,51 @@ void DispatchVoxelizeMesh_RenderThread(
 }
 
 
-void ClearVoxelGridBuffer_RenderThread()
+void ClearVoxelGridBuffer_RenderThread(FRHICommandList& RHICmdList, FVoxelGridResource* VoxelGridResource)
 {
-    FVoxelGridResource* VoxelGridResource = FVoxelGridResource::Get();
-
     auto BufferLength = VoxelGridResource->GetBufferLength();
 
     // TODO: optimize using compute shader
-    FlushRenderingCommands();
-    ENQUEUE_RENDER_COMMAND(CopyOccupancyBuffer)([VoxelGridResource, BufferLength](FRHICommandListImmediate& RHICmdList)
-        {
-            void* OutputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferLength * sizeof(uint32), RLM_WriteOnly));
-            FMemory::Memset(OutputGPUBuffer, 0, BufferLength * sizeof(uint32));
-            // UnlockBuffer
-            RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer);
-        });
-    FlushRenderingCommands();
+    void* OutputGPUBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferLength * sizeof(uint32), RLM_WriteOnly);
+    FMemory::Memset(OutputGPUBuffer, 0, BufferLength * sizeof(uint32));
+    // UnlockBuffer
+    RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer);
 }
 
 
-void CopyVoxelGridToCPU_RenderThread(TArray<uint32>& DstBuffer)
+void CopyVoxelGridToCPU_RenderThread(FRHICommandList& RHICmdList, FVoxelGridResource* VoxelGridResource, FVoxelGrid* VoxelGrid)
 {
-    FVoxelGridResource* VoxelGridResource = FVoxelGridResource::Get();
-
     uint32 BufferSize = VoxelGridResource->GetBufferLength();
-
-    if (static_cast<uint32>(DstBuffer.Max()) < BufferSize)
+    VoxelGrid->Origin = VoxelGridResource->GridOrigin;
+    if (VoxelGrid->GridDim != VoxelGridResource->GridDim || static_cast<uint32>(VoxelGrid->ImmovableMeshOccupancy.Max()) < BufferSize)
     {
-        UE_LOG(LogVoxelization, Warning, 
-            TEXT("CopyVoxelGridToCPU_RenderThread: Not enough space, resizing destination buffer from %d to %d"),
-            DstBuffer.Max(), VoxelGridResource->GetBufferLength());
+        VoxelGrid->GridDim = VoxelGridResource->GridDim;
+        VoxelGrid->ImmovableMeshOccupancy.SetNumZeroed(BufferSize);
 
-        DstBuffer.SetNum(BufferSize);
+        UE_LOG(LogVoxelization, Warning, TEXT("CopyVoxelGridToCPU_RenderThread: mismatched voxel grid dim, resizing to %d, %d, %d"),
+            VoxelGridResource->GridDim.X, VoxelGridResource->GridDim.Y, VoxelGridResource->GridDim.Z);
     }
 
-    auto* DstBufferPtr = DstBuffer.GetData();
+    auto* DstBufferPtr = VoxelGrid->ImmovableMeshOccupancy.GetData();
+    void* SrcBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferSize * sizeof(uint32), RLM_ReadOnly);
+    FMemory::Memcpy(DstBufferPtr, SrcBuffer, BufferSize * sizeof(uint32));
+    RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer);
+}
 
-    FlushRenderingCommands();
-    ENQUEUE_RENDER_COMMAND(CopyOccupancyBuffer)([VoxelGridResource, DstBufferPtr, BufferSize](FRHICommandListImmediate& RHICmdList)
-        {
-            void* SrcBuffer = static_cast<float*>(RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferSize * sizeof(uint32), RLM_ReadOnly));
-            FMemory::Memcpy(DstBufferPtr, SrcBuffer, BufferSize * sizeof(uint32));
-            // UnlockBuffer
-            RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer);
-        });
-    FlushRenderingCommands();
+
+void DispatchCalculateVertexVelocity_RenderThread(
+	FRHICommandList& RHICmdList,
+	class FVertexVelocityShaderParameters* VelocityParameters)
+{
+	TShaderMapRef<FVertexVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
+
+	SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), *VelocityParameters);
+
+	constexpr int32 ShaderBlockDimX = 64;
+	int32 Blocks = FMath::CeilToInt32(VelocityParameters->VertexCount / static_cast<float>(ShaderBlockDimX));
+	DispatchComputeShader(RHICmdList, Shader.GetShader(), Blocks, 1, 1);
+
+	UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
+	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
 }

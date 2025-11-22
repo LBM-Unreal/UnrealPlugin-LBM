@@ -36,6 +36,7 @@ public:
     FRWBufferStructured ImmovableMeshOccupancyBuffer;
 
     // Parameters
+    FVector3f  GridOrigin;
     FIntVector GridDim;
 
     virtual void InitRHI(FRHICommandListBase& RHICmdList) override;

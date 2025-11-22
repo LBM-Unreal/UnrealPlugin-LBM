@@ -21,17 +21,3 @@ void FVoxelizationModule::ShutdownModule()
 
 IMPLEMENT_MODULE(FVoxelizationModule, Voxelization)
 
-
-
-
-void VOXELIZATION_API UVoxelizationLibrary::VoxelizeGrid(AVoxelGridActor* VoxelGrid, bool UseCPU)
-{
-	if (UseCPU)
-	{
-		VoxelGrid->FillImmovableVoxelGrid();
-	}
-	else
-	{
-
-	}
-}

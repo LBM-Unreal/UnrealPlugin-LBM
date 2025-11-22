@@ -47,7 +47,7 @@ void AVoxelGridActor::FillImmovableVoxelGrid()
 	const auto* Occupancy = VoxelGrid.ImmovableMeshOccupancy.GetData();
 
 	FlushRenderingCommands();
-		ENQUEUE_RENDER_COMMAND(CopyOccupancyBuffer)([&](FRHICommandListImmediate& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(CopyBufferToGPU)([&](FRHICommandListImmediate& RHICmdList)
 		{
 			if (ResizeOccupancyBuffer)
 			{
@@ -66,31 +66,20 @@ void AVoxelGridActor::FillImmovableVoxelGrid()
 
 void AVoxelGridActor::FillImmovableVoxelGridGPU()
 {
-		// TODO: expand to multiple meshes
-		const AStaticMeshActor* meshActor = ImmovableMeshes[0];
-		const UStaticMesh* Mesh = meshActor->GetStaticMeshComponent()->GetStaticMesh();
-		const FStaticMeshLODResources& LOD = Mesh->GetRenderData()->LODResources[0];
-		const FPositionVertexBuffer& VB = LOD.VertexBuffers.PositionVertexBuffer;
-		const FRawStaticIndexBuffer& IB = LOD.IndexBuffer;
+    UE_LOG(LogVoxelization, Display, TEXT("FillImmovableVoxelGridGPU: Clear GPU buffer"));
 
-		FVoxelizationShaderParameters params{};
-		params.VoxelGridBuffer = FVoxelGridResource::Get()->ImmovableMeshOccupancyBuffer.UAV;
-		params.TriangleVerts = VB.GetSRV();
-		
-
-		// Create an SRV for index manually
-		FBufferRHIRef IndexRHI = IB.IndexBufferRHI;
-		auto a = IB.GetArrayView();
-		const bool bIs32Bit = IB.Is32Bit();
-		
-		params.GridDim = VoxelGrid.GridDim;
-	
-
-	// DispatchVoxelizeMesh_RenderThread
-	if (!IB.Is32Bit())
-	{
-
-	}
+	FlushRenderingCommands();
+	ENQUEUE_RENDER_COMMAND(FillImmovableVoxelGridGPU)([&](FRHICommandListImmediate& RHICmdList)
+		{
+			if (FVoxelGridResource::Get()->GridDim != VoxelGrid.GridDim)
+			{
+				FVoxelGridResource::Get()->GridDim = VoxelGrid.GridDim;
+				FVoxelGridResource::Get()->UpdateRHI(RHICmdList);
+			}
+			ClearVoxelGridBuffer_RenderThread(RHICmdList, FVoxelGridResource::Get());
+			DispatchVoxelizeMesh_RenderThread(RHICmdList, FVoxelGridResource::Get(), ImmovableMeshes[0], VoxelGrid.Origin, VoxelGrid.GridDim);
+		});
+	FlushRenderingCommands();
 }
 
 void AVoxelGridActor::Visualize()
@@ -98,9 +87,18 @@ void AVoxelGridActor::Visualize()
 	VoxelMeshVisualization->UpdateVisualization(VoxelGrid);
 }
 
-void AVoxelGridActor::TriggerDebugFunc()
+void AVoxelGridActor::CopyBufferToCPU()
 {
+	FVoxelGridResource* VoxelGridResource = FVoxelGridResource::Get();
 	UE_LOG(LogVoxelization, Display, TEXT("VoxelGrid: Copying to CPU"));
-    CopyVoxelGridToCPU_RenderThread(VoxelGrid.ImmovableMeshOccupancy);
+
+	FlushRenderingCommands();
+	ENQUEUE_RENDER_COMMAND(CopyBufferToCPU)([&](FRHICommandListImmediate& RHICmdList)
+		{
+			CopyVoxelGridToCPU_RenderThread(RHICmdList, VoxelGridResource, &VoxelGrid);
+
+		});
+	FlushRenderingCommands();
+
 }
 

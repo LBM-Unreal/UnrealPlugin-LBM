@@ -4,8 +4,8 @@
 // Voxel grid buffer (UAV)
 RWStructuredBuffer<uint> VoxelGridBuffer;
 // Mesh data buffer (SRV)
-StructuredBuffer<float> TriangleVerts;
-StructuredBuffer<uint> TriangleIndices;
+Buffer<float> TriangleVerts;
+Buffer<uint> TriangleIndices;
 
 // Voxel grid parameters
 float3 GridMin;
@@ -16,7 +16,6 @@ float4x4 LocalToWorld;
 uint TriangleCount;
 uint VertexCount;
 uint IndexCount;
-
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -40,27 +39,66 @@ void LoadTriangle(in uint triangleIdx, out float3 v0, out float3 v1, out float3 
     LoadVertexPosition(i2, v2);
 }
 
-void writeOutput(float4 pos)
+void WriteOutput(float4 pos)
 {
-    uint idx = pos.x + pos.y * GridDim.x + pos.z * GridDim.x * GridDim.y;
+    if (pos.x < 0 || pos.y < 0 || pos.z < 0 ||
+        pos.x >= GridDim.x || pos.y >= GridDim.y || pos.z >= GridDim.z)
+    {
+        return;
+    }
+
+    uint idx = floor(pos.x) + floor(pos.y) * GridDim.x + floor(pos.z) * GridDim.x * GridDim.y;
     VoxelGridBuffer[idx] = 1;
 }
 
 
 //////////////////////////////////////////////////////////////////////////
 // Algorithm Helper Functions
-void SortVertices(inout float4 v0, inout float4 v1, inout float4 v2, in float4 pAxis)
+void swap(inout float4 v0, inout float4 v1)
 {
-	// TODO: sort v0, v1, v2 along pAxis
-    float p0 = dot(v0, pAxis);
-    float p1 = dot(v1, pAxis);
-    float p2 = dot(v2, pAxis);
+    float4 tmp = v0;
+    v0 = v1;
+    v1 = tmp;
 }
 
-float4 PointInEdge(in float4 p0, in float4 p1, in float4 pAxis)
+void SortVertices(inout float4 v0, inout float4 v1, inout float4 v2, in float4 pAxis)
 {
-	// TODO: return point in edge p0-p1 at height h along primary axis
-    return 0.0f;
+	// TODO: optimize branching and calculation
+    if (dot(v0, pAxis) < dot(v1, pAxis))
+    {
+        swap(v0, v1);
+    }
+    if (dot(v1, pAxis) < dot(v2, pAxis))
+    {
+        swap(v1, v2);
+    }
+    if (dot(v0, pAxis) < dot(v1, pAxis))
+    {
+        swap(v0, v1);
+    }
+}
+
+float4 PointInEdge(in float4 vA, in float4 vB, in float h, in float4 pAxis)
+{
+    // Compute projection values
+    float a = dot(vA, pAxis);
+    float b = dot(vB, pAxis);
+
+    // If the edge does not cross this height, return vA (no-op)
+    // But the caller should handle empty intersections.
+    float denom = (b - a);
+    if (abs(denom) < 1e-6)
+    {
+        return vA;  // Edge is parallel to scanline
+    }
+
+    // Solve for interpolation factor t where:
+    // dot(lerp(vA, vB, t), pAxis) = h
+    float t = (h - a) / denom;
+    t = saturate(t); // clamp for safety
+
+    // Linear interpolation on full float4
+    return lerp(vA, vB, t);
 }
 
 float4 CalcFlatAdvance(in float4 pAxis, in float4 normal)
@@ -97,7 +135,6 @@ float4 CalcPrimaryAxis(float4 v0, float4 v1, float4 v2)
 }
 
 
-
 //////////////////////////////////////////////////////////////////////////
 // Algorithm Core Functions
 void GapDetection(float4 voxel, float4 flatAdvance, float4 pAxis, float4 normal, float4 v0, float4 v1, float4 v2)
@@ -115,7 +152,7 @@ void GapDetection(float4 voxel, float4 flatAdvance, float4 pAxis, float4 normal,
     if (distance <= 1.0f)
 	{
     	float4 oppositeVoxel = voxel + sign(flatAdvance);
-        writeOutput(oppositeVoxel);
+        WriteOutput(oppositeVoxel);
     }
 }
 
@@ -132,8 +169,8 @@ void Scanline(float4 start, float4 end, float4 flatAdvance, float4 normal, float
 
 	// first voxel
     float4 voxel = floor(start);
-    writeOutput(voxel);
-    GapDetection(voxel, flatAdvance, pAxis, normal, v0, v1, v2);
+    WriteOutput(voxel);
+    // GapDetection(voxel, flatAdvance, pAxis, normal, v0, v1, v2);
     while (steps-- >= 0)
     {
 		// Determine the next 6Neighbour to visit
@@ -141,11 +178,11 @@ void Scanline(float4 start, float4 end, float4 flatAdvance, float4 normal, float
         float4 TMaxStep = float4(minTMax == tMax);
 
     	// Bias opposing the flat advance Direction
-        TMaxStep = lerp(TMaxStep, (TMaxStep != flatAdvance), dot(TMaxStep, TMaxStep) > 1.0f);
+        TMaxStep = lerp(TMaxStep, (TMaxStep != flatAdvance), dot(TMaxStep, TMaxStep) > 1.0f);   // TODO: might be this causing extrusion
         voxel += TMaxStep * step;
         tMax += TMaxStep * tDelta;
-        writeOutput(voxel);
-        GapDetection(voxel, flatAdvance, pAxis, normal, v0, v1, v2);
+        WriteOutput(voxel);
+        // GapDetection(voxel, flatAdvance, pAxis, normal, v0, v1, v2);
     }
 }
 
@@ -153,18 +190,20 @@ void VoxelizeTriangle(float4 v0, float4 v1, float4 v2, float4 normal)
 {
 	// Step 1 - Initialization
     float4 pAxis = CalcPrimaryAxis(v0, v1, v2);
+
     SortVertices( /*inout*/v0, /*inout*/v1, /*inout*/v2, pAxis);
     float4 flatAdvance = CalcFlatAdvance(pAxis, normal);
 
+
 	// Step 2 - Interior Traversal stating
 	// from v2’s height along the primary axis
-    int h = int(dot(v2, pAxis));
+    /*int h = int(dot(v2, pAxis));
 
 	// Bottom half, up to v1’s height
     while (h <= int(dot(v1, pAxis)))
     {
-        float4 start = PointInEdge(v2, v0, h);
-        float4 end = PointInEdge(v2, v1, h);
+        float4 start = PointInEdge(v2, v0, h, pAxis);
+        float4 end = PointInEdge(v2, v1, h, pAxis);
         Scanline(start, end, flatAdvance, normal, pAxis, v0, v1, v2);
         h = h + 1;
     }
@@ -172,18 +211,20 @@ void VoxelizeTriangle(float4 v0, float4 v1, float4 v2, float4 normal)
 	// Top Half, up to v0’s height
     while (h <= int(dot(v0, pAxis)))
     {
-        float4 start = PointInEdge(v2, v0, h);
-        float4 end = PointInEdge(v1, v0, h);
+        float4 start = PointInEdge(v2, v0, h, pAxis);
+        float4 end = PointInEdge(v1, v0, h, pAxis);
         Scanline(start, end, flatAdvance, normal, pAxis, v0, v1, v2);
         h = h + 1;
-    }
+    }*/
 
 	// Step 3 - Edge Voxelization
+
     Scanline(v0, v1, flatAdvance, normal, pAxis, v0, v1, v2);
     Scanline(v1, v2, flatAdvance, normal, pAxis, v0, v1, v2);
     Scanline(v2, v0, flatAdvance, normal, pAxis, v0, v1, v2);
 }
 
+#define DEBUG 0
 
 [numthreads(32, 1, 1)]
 void VoxelizeMesh(uint3 DTid : SV_DispatchThreadID)
@@ -193,22 +234,34 @@ void VoxelizeMesh(uint3 DTid : SV_DispatchThreadID)
     float3 vertices[3];
     LoadTriangle(DTid, vertices[0], vertices[1], vertices[2]);
 
-    vertices[0] = mul(LocalToWorld, vertices[0]);
-    vertices[1] = mul(LocalToWorld, vertices[1]);
-    vertices[2] = mul(LocalToWorld, vertices[2]);
+    float4 v0 = float4(vertices[0], 1.0f);
+    float4 v1 = float4(vertices[1], 1.0f);
+    float4 v2 = float4(vertices[2], 1.0f);
 
-    VoxelizeTriangle(float4(vertices[0], 0), float4(vertices[1], 0), float4(vertices[1], 0), float4(0,0,0,0));  //TODO: add normal
+    v0 = mul(LocalToWorld, v0);
+    v1 = mul(LocalToWorld, v1);
+    v2 = mul(LocalToWorld, v2);
+
+    v0.xyz -= GridMin;
+    v1.xyz -= GridMin;
+    v2.xyz -= GridMin;
+
+    float4 normal = float4(normalize(cross(v0.xyz, v1.xyz)), 1);
+
+#if DEBUG
+   
+#else
+	VoxelizeTriangle(v0, v1, v2, normal);  //TODO: add normal
+#endif
+    
 }
 
 
 /* ----------------- Copy Kernel ------------------------------------------------------------------------------------------------------*/ 
 #define ELEMENT_DIM 20
 
-RWStructuredBuffer<uint> CpySrcVoxelGridBuffer; // Voxel grid buffer (SRV)
-// SimulationCore/FSimulationShaderResource3D.DebugBuffer
-// Occupancy buffer at SimulationCore3DCompute.usf & 
+RWStructuredBuffer<uint> CpySrcVoxelGridBuffer; 
 RWStructuredBuffer<int> CpyDstDebugBuffer;
-
 
 int3 SimDimension;
 int3 VoxelGridDimension;
@@ -234,5 +287,4 @@ void CpyVoxelGridToSimulation(uint3 DTid : SV_DispatchThreadID)
     {
         CpyDstDebugBuffer[dstIdx] = 1;
     }
-    // CpyDstDebugBuffer[dstIdx] = 1;
 }

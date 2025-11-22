@@ -4,6 +4,7 @@
 #include "RenderResource.h"
 #include "ShaderParameterStruct.h"
 
+// FVoxelizationCS
 BEGIN_SHADER_PARAMETER_STRUCT(FVoxelizationShaderParameters,)
 	// Buffers
     SHADER_PARAMETER_UAV(RWStructuredBuffer<uint32>, VoxelGridBuffer)
@@ -27,12 +28,49 @@ class FVoxelizationCS : public FGlobalShader
 	using FParameters = FVoxelizationShaderParameters;
 };
 
-struct FInstanceData_RenderThread
+
+/* ----------------- FCopyVoxelGridToSimCS ------------------------------------------------------------------------------------------------------*/ 
+BEGIN_SHADER_PARAMETER_STRUCT(FCopyVoxelGridToSimParameters, )
+    // Buffers
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<uint32>, CpySrcVoxelGridBuffer)
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<int>, CpyDstDebugBuffer)
+
+    // Params
+    SHADER_PARAMETER(FIntVector3, SimDimension)
+	SHADER_PARAMETER(FIntVector3, VoxelGridDimension)
+END_SHADER_PARAMETER_STRUCT()
+
+class FCopyVoxelGridToSimCS: public FGlobalShader
 {
-    void Init(FRHICommandList& RHICmdList);
+    DECLARE_SHADER_TYPE(FCopyVoxelGridToSimCS, Global)
+    SHADER_USE_PARAMETER_STRUCT(FCopyVoxelGridToSimCS, FGlobalShader)
+
+	using FParameters = FCopyVoxelGridToSimParameters;
 };
 
 
+/* ----------------- FVertexVelocityCS ------------------------------------------------------------------------------------------------------*/ 
+BEGIN_SHADER_PARAMETER_STRUCT(FVertexVelocityShaderParameters,)
+	// Buffers
+	SHADER_PARAMETER_SRV(StructuredBuffer<float>, TriangleVerts)
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<float>, VertexVelocities)
+
+	// Params
+	SHADER_PARAMETER(FMatrix44f, LocalToWorld)
+	SHADER_PARAMETER(float, DeltaTime)
+	SHADER_PARAMETER(uint32, VertexCount)
+END_SHADER_PARAMETER_STRUCT()
+
+class FVertexVelocityCS : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FVertexVelocityCS, Global)
+	SHADER_USE_PARAMETER_STRUCT(FVertexVelocityCS, FGlobalShader)
+
+	using FParameters = FVertexVelocityShaderParameters;
+};
+
+
+/* ----------------- Utility Functions ------------------------------------------------------------------------------------------------------*/ 
 void VOXELIZATION_API DispatchCopyVoxelGridToSim_RenderThread(
     FRHICommandList& RHICmdList,
     class FVoxelGridResource* VoxelGridResource,
@@ -40,10 +78,20 @@ void VOXELIZATION_API DispatchCopyVoxelGridToSim_RenderThread(
     FIntVector3 SimDimension,
     uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
 
+
 void VOXELIZATION_API DispatchVoxelizeMesh_RenderThread(
-    FRHICommandList& RHICmdList, 
-    class FVoxelizationShaderParameters* VoxelizationParameters);
+    FRHICommandList& RHICmdList,
+    class FVoxelGridResource* VoxelGridResource,
+    AStaticMeshActor* SMActor,
+    FVector3f VoxelGridOrigin,
+    FIntVector3 VoxelGridDimension);
 
-void ClearVoxelGridBuffer_RenderThread();
 
-void CopyVoxelGridToCPU_RenderThread(TArray<uint32>& DstBuffer);
+void VOXELIZATION_API ClearVoxelGridBuffer_RenderThread(FRHICommandList& RHICmdList, class FVoxelGridResource* VoxelGridResource);
+
+
+void VOXELIZATION_API CopyVoxelGridToCPU_RenderThread(FRHICommandList& RHICmdList,  FVoxelGridResource* VoxelGridResource, struct FVoxelGrid* VoxelGrid);
+
+void VOXELIZATION_API DispatchCalculateVertexVelocity_RenderThread(
+	FRHICommandList& RHICmdList,
+	class FVertexVelocityShaderParameters* VelocityParameters);

@@ -46,7 +46,7 @@ void UVoxelGridVisualizationComponent::UpdateVisualization(const FVoxelGrid& Vox
     const FVector Origin(VoxelGrid.Origin);
     const FVector Step(VoxelGrid.VoxelSize);
     const FVector GridDim(VoxelGrid.GridDim);
-    const auto& VoxelData = VoxelGrid.ImmovableMeshOccupancy;   // TODO: choose movable or immovable
+    const auto& VoxelData = VoxelGrid.ImmovableMeshOccupancy;
 
     constexpr int CubeVertsCount = 8;
     constexpr int CubeTrianglesCount = 36;

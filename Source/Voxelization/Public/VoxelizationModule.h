@@ -21,8 +21,4 @@ class UVoxelizationLibrary : public UBlueprintFunctionLibrary
     GENERATED_BODY()
 
 public:
-
-
-    UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Grid"), Category = "LBM Sim")
-    static VOXELIZATION_API void VoxelizeGrid(class AVoxelGridActor* VoxelGrid, bool UseCPU = true);
 };
