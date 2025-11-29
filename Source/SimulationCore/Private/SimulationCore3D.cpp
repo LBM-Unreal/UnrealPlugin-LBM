@@ -112,7 +112,7 @@ void FSimulationShaderResource3D::InitRHI(FRHICommandListBase& RHICmdList)
 		.SetDimensionFromTexture(DebugTexture3D)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 1));
-	DebugBuffer.Initialize(RHICmdList, TEXT("LBM_DebugBuffer"), sizeof(int), TextureSize[0] * TextureSize[1] * TextureSize[2] * 20);
+	DebugBuffer.Initialize(RHICmdList, TEXT("LBM_DebugBuffer"), sizeof(int), (TextureSize[0]+4) * (TextureSize[1]+4) * (TextureSize[2]+4) * 20);
 }
 
 // Buffer释放函数

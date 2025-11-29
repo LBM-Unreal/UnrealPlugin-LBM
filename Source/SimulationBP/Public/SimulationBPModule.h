@@ -271,9 +271,9 @@ public:
 			{
 				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
 				DispatchLBMMRInitialState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 
-					FSimulationShaderResource3D::Get()->TextureSize[0] / 4, 
-					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
-					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4 + 1, 
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4 + 1,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4 + 1);
 			});
 		FlushRenderingCommands();
 	}
@@ -284,9 +284,9 @@ public:
 			{
 				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
 				DispatchLBMMRStreamingCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(),
-					FSimulationShaderResource3D::Get()->TextureSize[0] / 4,
-					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
-					FSimulationShaderResource3D::Get()->TextureSize[2] / 4); // margin the last row/col of cells
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4 - 1,
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4 - 1,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4 - 1); // margin the last row/col of cells
 			});
 		FlushRenderingCommands();
 	}

@@ -533,7 +533,7 @@ void LBM_MR_InitialState3D(
     uint texelX = DispatchThreadId.x;
     uint texelY = DispatchThreadId.y;
     uint texelZ = DispatchThreadId.z;
-    if (texelX > SimDimension.x - 1 || texelY > SimDimension.y - 1 || texelZ > SimDimension.z - 1)
+    if (texelX >= SimDimension.x || texelY >= SimDimension.y || texelZ >= SimDimension.z)
     {
         return;
     }
@@ -545,9 +545,9 @@ void LBM_MR_InitialState3D(
     
     int boundary = 0;
     // process all boundary settings
-    if (texelX <= 0 || texelX >= SimDimension.x || 
-        texelY <= 0 || texelY >= SimDimension.y || 
-        texelZ <= 0 || texelZ >= SimDimension.z)
+    if (texelX <= 0 || texelX >= SimDimension.x-1 || 
+        texelY <= 0 || texelY >= SimDimension.y-1 || 
+        texelZ <= 0 || texelZ >= SimDimension.z-1 )
     {
         boundary = 1; // type 1 lattice
     }
@@ -602,15 +602,19 @@ void LBM_MR_Streaming_Collision3D(
     6 7 8
     
     */
-    
+
     uint texelX = DispatchThreadId.x + 1;
     uint texelY = DispatchThreadId.y + 1; 
     uint texelZ = DispatchThreadId.z + 1; // skip the outer boundary
     const uint block_x_dim = BLOCK_DIM_X;
     const uint block_y_dim = BLOCK_DIM_Y;
     const uint block_z_dim = BLOCK_DIM_Z;
-    if (texelX > 254 || texelY > 254 || texelZ > 254)
+    if (texelX >= SimDimension.x - 1 || texelY >= SimDimension.y - 1 || texelZ >= SimDimension.z - 1)
     {
+        if (texelZ == DEBUG_TEXTURE_SLICE)
+        {
+            StoreDebugTexture2D(texelX, texelY, float4(0., 1., 0., 0));
+        }
         return;
     }
     // LBM constants
