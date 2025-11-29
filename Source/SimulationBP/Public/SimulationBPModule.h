@@ -265,6 +265,24 @@ public:
 		FlushRenderingCommands();
 	}
 
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR InitialState 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMMRInitialState3D() {
+		ENQUEUE_RENDER_COMMAND(FLBMMRInitialState)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMMRInitialState3D_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+			});
+		FlushRenderingCommands();
+	}
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR Streaming Collision 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMMRStreamingCollision3D() {
+		ENQUEUE_RENDER_COMMAND(FLBMMRStreamingCollision)([](FRHICommandListImmediate& RHICmdList)
+			{
+				DispatchLBMMRStreamingCollision3D_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 63, 63, 63); // margin the last row/col of cells
+			});
+		FlushRenderingCommands();
+	}
+
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM BoundaryTreatment 3D"), Category = "LBM Sim")
 	static SIMULATIONBP_API void LBMBoundaryTreatment3D(int debugTextureSlice) {
 		ENQUEUE_RENDER_COMMAND(FLBMBoundaryTreatment3D)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
