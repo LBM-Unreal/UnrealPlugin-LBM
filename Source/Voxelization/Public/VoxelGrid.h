@@ -34,6 +34,8 @@ class VOXELIZATION_API FVoxelGridResource : public FRenderResource
 public:
     // Render Resources
     FRWBufferStructured ImmovableMeshOccupancyBuffer;
+    FRWBufferStructured MovableMeshOccupancyBuffer;
+    FRWBufferStructured GridVelocityBuffer;
 
     // Parameters
     FVector3f  GridOrigin;

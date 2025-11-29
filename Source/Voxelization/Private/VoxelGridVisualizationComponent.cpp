@@ -19,6 +19,7 @@ void UVoxelGridVisualizationComponent::OnRegister()
         ProceduralMesh = NewObject<UProceduralMeshComponent>(GetOwner(), TEXT("VoxelGridProceduralMesh"));
         ProceduralMesh->SetupAttachment(this);
         ProceduralMesh->RegisterComponent();
+        ProceduralMesh->SetAffectDistanceFieldLighting(false);
     }
 
     if (!VoxelGridArea)
@@ -47,6 +48,12 @@ void UVoxelGridVisualizationComponent::UpdateVisualization(const FVoxelGrid& Vox
     const FVector Step(VoxelGrid.VoxelSize);
     const FVector GridDim(VoxelGrid.GridDim);
     const auto& VoxelData = VoxelGrid.ImmovableMeshOccupancy;
+
+    if (VoxelData.Num() != GridDim.X * GridDim.Y * GridDim.Z)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("VoxelGridVisualizationComponent::UpdateVisualization: Voxel data size mismatch"));
+        return;
+    }
 
     constexpr int CubeVertsCount = 8;
     constexpr int CubeTrianglesCount = 36;

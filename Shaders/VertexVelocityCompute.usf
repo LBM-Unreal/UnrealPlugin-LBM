@@ -2,13 +2,15 @@
 #include "/Engine/Public/Platform.ush"
 
 // Input buffers
-StructuredBuffer<float> TriangleVerts;
-RWStructuredBuffer<float> VertexVelocities;
+Buffer<float> TriangleVerts;	// Mesh vertex buffer SRV
+
+RWStructuredBuffer<float3> VertexPositionsWorldSpace;
+RWStructuredBuffer<float3> VertexVelocitiesWorldSpace;
 
 // Parameters
 float4x4 LocalToWorld;
-float DeltaTime;
 uint VertexCount;
+float DeltaTime;
 
 void LoadVertexPosition(in uint vertex, out float3 pos)
 {
@@ -25,30 +27,14 @@ void CalculateVertexVelocity(uint3 DTid : SV_DispatchThreadID)
 
     float deltaTime = max(0.01f, DeltaTime);
 
-	// Load vertex position in local space
 	float3 localPos;
 	LoadVertexPosition(DTid.x, localPos);
 
-	// Transform to world space
 	float4 worldPos = mul(LocalToWorld, float4(localPos, 1.0));
-
-	// Calculate velocity based on transformation
-	// For rigid body motion, velocity = (currentPos - previousPos) / deltaTime
-	// Since we're using LocalToWorld, we can calculate velocity from the transformation matrix
-	// The velocity is the derivative of position with respect to time
-	// For a rigid body: v = (M * p - M_prev * p) / dt
-	// Simplified: v = (dM/dt * p) where dM/dt is approximated by the transformation change
+    float3 worldPosPrevFrame = VertexPositionsWorldSpace[DTid.x];
+    float3 velocity = (worldPos.xyz - worldPosPrevFrame) / deltaTime;
 	
-	// If you have previous frame's LocalToWorld, you'd do:
-	// float4 prevWorldPos = mul(PreviousLocalToWorld, float4(localPos, 1.0));
-	// float3 velocity = (worldPos.xyz - prevWorldPos.xyz) / deltaTime;
-	
-	// For now, assuming you'll pass previous positions or calculate based on mesh motion
-	// This is a placeholder - you'll need to adapt based on your specific velocity calculation needs
-	float3 velocity = float3(0.0, 0.0, 0.0);
-	
-	// Write velocity (3 floats per vertex)
-	VertexVelocities[DTid.x * 3 + 0] = velocity.x;
-	VertexVelocities[DTid.x * 3 + 1] = velocity.y;
-	VertexVelocities[DTid.x * 3 + 2] = velocity.z;
+	// Write outputs
+	VertexVelocitiesWorldSpace[DTid.x] = velocity;
+    VertexPositionsWorldSpace[DTid.x] = worldPos.xyz;
 }

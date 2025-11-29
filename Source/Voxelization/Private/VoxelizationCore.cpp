@@ -5,6 +5,8 @@
 #include "VoxelizationModule.h"
 #include "Engine/StaticMeshActor.h"
 
+
+
 /* ---------------------------------------- Shaders ---------------------------------------------------- */
 // FVoxelizationCS
 IMPLEMENT_SHADER_TYPE(, FVoxelizationCS, TEXT("/VoxelizationShaderDir/VoxelizationCoreCompute.usf"), TEXT("VoxelizeMesh"), SF_Compute);
@@ -12,6 +14,61 @@ IMPLEMENT_SHADER_TYPE(, FVoxelizationCS, TEXT("/VoxelizationShaderDir/Voxelizati
 IMPLEMENT_SHADER_TYPE(, FCopyVoxelGridToSimCS, TEXT("/VoxelizationShaderDir/VoxelizationCoreCompute.usf"), TEXT("CpyVoxelGridToSimulation"), SF_Compute);
 // FVertexVelocityCS
 IMPLEMENT_SHADER_TYPE(, FVertexVelocityCS, TEXT("/VoxelizationShaderDir/VertexVelocityCompute.usf"), TEXT("CalculateVertexVelocity"), SF_Compute);
+
+
+/* ---------------------------------------- Resources ---------------------------------------------------- */
+FVertexVelocityResource* FVertexVelocityResource::GInstance = nullptr;
+
+void FVertexVelocityResource::InitRHI(FRHICommandListBase& RHICmdList)
+{
+	if (VertexCount > 0)
+	{
+		VertexPositionsBuffer.Initialize(RHICmdList, TEXT("VertexPositionsBuffer"), sizeof(FVector3f), VertexCount);
+		VertexVelocitiesBuffer.Initialize(RHICmdList, TEXT("VertexVelocitiesBuffer"), sizeof(FVector3f), VertexCount);
+	}
+    else
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("FVertexVelocityResource::InitRHI: Invalid VertexCount: %d. Stopped execution."), VertexCount);
+        return;
+    }
+}
+
+void FVertexVelocityResource::SetVertexCount(FRHICommandListBase& RHICmdList, uint32 InVertexCount)
+{
+    if (VertexCount != InVertexCount)
+    {
+        // Release old buffers if they exist
+        if (VertexCount > 0)
+        {
+            VertexPositionsBuffer.Release();
+            VertexVelocitiesBuffer.Release();
+        }
+
+        VertexCount = InVertexCount;
+
+        // Initialize new buffers if count is valid
+        if (InVertexCount > 0)
+        {
+            VertexPositionsBuffer.Initialize(RHICmdList, TEXT("VertexPositionsBuffer"), sizeof(FVector3f), VertexCount);
+            VertexVelocitiesBuffer.Initialize(RHICmdList, TEXT("VertexVelocitiesBuffer"), sizeof(FVector3f), VertexCount);
+        }
+    }
+}
+
+void FVertexVelocityResource::ReleaseRHI()
+{
+	VertexPositionsBuffer.Release();
+	VertexVelocitiesBuffer.Release();
+}
+
+FVertexVelocityResource* FVertexVelocityResource::Get()
+{
+	if (!GInstance)
+	{
+		GInstance = new FVertexVelocityResource();
+	}
+	return GInstance;
+}
 
 
 /* ---------------------------------------- Functions ---------------------------------------------------- */
@@ -53,6 +110,7 @@ void DispatchCopyVoxelGridToSim_RenderThread(
 void VOXELIZATION_API DispatchVoxelizeMesh_RenderThread(
     FRHICommandList& RHICmdList,
     FVoxelGridResource* VoxelGridResource,
+    FVertexVelocityResource* VertexVelocityResource,
     AStaticMeshActor* SMActor,
     FVector3f VoxelGridOrigin,
     FIntVector3 VoxelGridDimension)
@@ -69,10 +127,15 @@ void VOXELIZATION_API DispatchVoxelizeMesh_RenderThread(
     TShaderMapRef<FVoxelizationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
     SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 
+    UE_LOG(LogVoxelization, Display, TEXT("DispatchVoxelizeMesh_RenderThread: Fetching mesh data"));
+
     // Mesh data
     const auto& MeshLOD0 = SMActor->GetStaticMeshComponent()->GetStaticMesh()->GetRenderData()->LODResources[0];
     const FRawStaticIndexBuffer& IB = MeshLOD0.IndexBuffer;
     const FPositionVertexBuffer& VB = MeshLOD0.VertexBuffers.PositionVertexBuffer;
+    const int bHasReversedIndices = MeshLOD0.bHasReversedIndices;
+
+    UE_LOG(LogVoxelization, Display, TEXT("DispatchVoxelizeMesh_RenderThread: Fetching mesh data: [ReversedIndices = %d]"), bHasReversedIndices);
 
 	{
         // Create SRV for mesh index buffer
@@ -106,6 +169,8 @@ void VOXELIZATION_API DispatchVoxelizeMesh_RenderThread(
     	Params.TriangleIndices = MeshIndexBufferSRV;
     	Params.TriangleVerts = VB.GetSRV();
     	Params.VoxelGridBuffer = VoxelGridResource->ImmovableMeshOccupancyBuffer.UAV;
+    	Params.GridVelocityBuffer = VoxelGridResource->GridVelocityBuffer.UAV;
+        Params.VertexVelocitiesWorldSpace = VertexVelocityResource->VertexVelocitiesBuffer.SRV;
 
     	// Parameters
     	Params.GridMin = VoxelGridOrigin;
@@ -159,17 +224,28 @@ void CopyVoxelGridToCPU_RenderThread(FRHICommandList& RHICmdList, FVoxelGridReso
 }
 
 
-void DispatchCalculateVertexVelocity_RenderThread(
-	FRHICommandList& RHICmdList,
-	class FVertexVelocityShaderParameters* VelocityParameters)
+void DispatchCalculateVertexVelocity_RenderThread(FRHICommandList& RHICmdList, FVertexVelocityResource* VertexVelocityResource, AStaticMeshActor* SMActor, float DeltaTime)
 {
 	TShaderMapRef<FVertexVelocityCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 
-	SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), *VelocityParameters);
+    const auto& MeshLOD0 = SMActor->GetStaticMeshComponent()->GetStaticMesh()->GetRenderData()->LODResources[0];
+    const uint32 VertexCount = MeshLOD0.GetNumVertices();
 
-	constexpr int32 ShaderBlockDimX = 64;
-	int32 Blocks = FMath::CeilToInt32(VelocityParameters->VertexCount / static_cast<float>(ShaderBlockDimX));
+    VertexVelocityResource->SetVertexCount(RHICmdList, VertexCount);
+	{
+		FVertexVelocityShaderParameters Params{};
+		Params.TriangleVerts = MeshLOD0.VertexBuffers.PositionVertexBuffer.GetSRV();
+		Params.VertexPositionsWorldSpace = VertexVelocityResource->VertexPositionsBuffer.UAV;
+		Params.VertexVelocitiesWorldSpace = VertexVelocityResource->VertexVelocitiesBuffer.UAV;
+
+		Params.LocalToWorld = static_cast<FMatrix44f>(SMActor->GetTransform().ToMatrixWithScale().GetTransposed());
+		Params.DeltaTime = DeltaTime;
+        Params.VertexCount = VertexCount;
+		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Params);
+	}
+
+	int32 Blocks = FMath::CeilToInt32(VertexCount / static_cast<float>(FVertexVelocityCS::BlockSize));
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), Blocks, 1, 1);
 
 	UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());

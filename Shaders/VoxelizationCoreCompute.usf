@@ -3,9 +3,12 @@
 
 // Voxel grid buffer (UAV)
 RWStructuredBuffer<uint> VoxelGridBuffer;
+RWStructuredBuffer<float3> GridVelocityBuffer;
+
 // Mesh data buffer (SRV)
 Buffer<float> TriangleVerts;
 Buffer<uint> TriangleIndices;
+StructuredBuffer<float3> VertexVelocitiesWorldSpace;
 
 // Voxel grid parameters
 float3 GridMin;
@@ -28,7 +31,15 @@ void LoadVertexPosition(in uint vertex, out float3 pos)
     pos.z = TriangleVerts[vertex * 3 + 2];
 }
 
-void LoadTriangle(in uint triangleIdx, out float3 v0, out float3 v1, out float3 v2)
+void LoadVertexVelocity(in uint vertex, out float3 velocity)
+{
+    vertex = clamp(vertex, 0, VertexCount - 1);
+    velocity = VertexVelocitiesWorldSpace[vertex];
+}
+
+void LoadTriangle(in uint triangleIdx, 
+    out float3 v0, out float3 v1, out float3 v2, 
+    out float3 velocity0, out float3 velocity1, out float3 velocity2)
 {
     uint i0 = clamp(TriangleIndices[triangleIdx * 3 + 0], 0, VertexCount - 1);
     uint i1 = clamp(TriangleIndices[triangleIdx * 3 + 1], 0, VertexCount - 1);
@@ -37,9 +48,12 @@ void LoadTriangle(in uint triangleIdx, out float3 v0, out float3 v1, out float3 
     LoadVertexPosition(i0, v0);
     LoadVertexPosition(i1, v1);
     LoadVertexPosition(i2, v2);
+    LoadVertexVelocity(i0, velocity0);
+    LoadVertexVelocity(i1, velocity1);
+    LoadVertexVelocity(i2, velocity2);
 }
 
-void WriteOutput(float4 pos)
+void WriteOutput(float4 pos, float3 velocity)
 {
     if (pos.x < 0 || pos.y < 0 || pos.z < 0 ||
         pos.x >= GridDim.x || pos.y >= GridDim.y || pos.z >= GridDim.z)
@@ -49,6 +63,58 @@ void WriteOutput(float4 pos)
 
     uint idx = floor(pos.x) + floor(pos.y) * GridDim.x + floor(pos.z) * GridDim.x * GridDim.y;
     VoxelGridBuffer[idx] = 1;
+    GridVelocityBuffer[idx] = velocity;
+}
+
+void WriteOutput(float3 pos, float3 velocity)
+{
+    if (pos.x < 0 || pos.y < 0 || pos.z < 0 ||
+        pos.x >= GridDim.x || pos.y >= GridDim.y || pos.z >= GridDim.z)
+    {
+        return;
+    }
+
+    uint idx = floor(pos.x) + floor(pos.y) * GridDim.x + floor(pos.z) * GridDim.x * GridDim.y;
+    VoxelGridBuffer[idx] = 1;
+    GridVelocityBuffer[idx] = velocity;
+}
+
+
+float3 GetBarycentricCoordinates(in float4 p, in float4 v0, in float4 v1, in float4 v2, in float4 normal)
+{
+    // TODO: optimize with precomputed e1 and e2
+    
+    // Project p onto the plane
+    float4 pProj = p - dot(p - v0, normal) * normal;
+    
+    // Compute edge vectors from v0
+    float3 e1 = (v1 - v0).xyz;
+    float3 e2 = (v2 - v0).xyz;
+    float3 d = (pProj - v0).xyz;
+    
+    // Compute dot products
+    float dot00 = dot(e1, e1);
+    float dot01 = dot(e1, e2);
+    float dot02 = dot(e1, d);
+    float dot11 = dot(e2, e2);
+    float dot12 = dot(e2, d);
+    
+    // Compute denominator
+    float denom = dot00 * dot11 - dot01 * dot01;
+    
+    // Avoid division by zero
+    if (abs(denom) < 1e-6)
+    {
+        return float3(0, 0, 0);
+    }
+    
+    // Compute barycentric coordinates u and v
+    float invDenom = 1.0 / denom;
+    float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+    float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+    float w = 1.0 - u - v;
+    
+    return float3(u, v, w);
 }
 
 
@@ -122,89 +188,75 @@ float4 CalcPrimaryAxis(float4 v0, float4 v1, float4 v2)
     {
         return float4(1.f, 0.f, 0.f, 0.f);
     }
-    else if (diff.y >= diff.x && diff.y >= diff.z)
+    else if (diff.y >= diff.z)
     {
         return float4(0.f, 1.f, 0.f, 0.f);
     }
-    else if (diff.z >= diff.x && diff.z >= diff.y)
+    else
     {
         return float4(0.f, 0.f, 1.f, 0.f);
     }
-
-    return float4(0, 0, 0, 0);
 }
 
 
 //////////////////////////////////////////////////////////////////////////
 // Algorithm Core Functions
-void GapDetection(float4 voxel, float4 flatAdvance, float4 pAxis, float4 normal, float4 v0, float4 v1, float4 v2)
+void Scanline(float4 start, float4 end, float4 flatAdvance, float4 normal, float4 pAxis, 
+    float4 v0, float4 v1, float4 v2, 
+    float3 velocity0, float3 velocity1, float3 velocity2)
 {
-	// Calculate L0, point in the line, as the lower corner of the edge connecting this voxel to its opposite 12 neighbour
-    float4 L0 = voxel + (flatAdvance > float4(0.f, 0.f, 0.f, 0.f));
+    float4 d = end - start;
+    float4 step = sign(d);    // voxel traversing step direction
+    float4 deltaT = 1 / max(abs(d), 0.00001);
+    float4 tMax = deltaT * select(step > 0,  ceil(start) - start, start - floor(start));
 
-	// Calculate P0, any point in the plane in this case we use the top vertex of the triangle
-    float4 P0 = v0;
-
-	// Calculate the intersection height over the current floor
-    float distance = dot(P0 - L0, normal) / dot(pAxis, normal);
-
-	// Gap Detection: intersection occurs in this floor and inside the triangle
-    if (distance <= 1.0f)
-	{
-    	float4 oppositeVoxel = voxel + sign(flatAdvance);
-        WriteOutput(oppositeVoxel);
-    }
-}
-
-void Scanline(float4 start, float4 end, float4 flatAdvance, float4 normal, float4 pAxis, float4 v0, float4 v1, float4 v2)
-{
-    const float4 d = end - start;
-    const float4 step = sign(d);
-	// steps is the sum of the components
+    // number of voxels to traverse
     int steps = int(dot(floor(end) - floor(start), step));
+    float4 currentVoxel = start;
 
-	// Calculate tMax and tDelta
-    const float4 tDelta = abs(float4(1.0f / d));
-    float4 tMax = lerp((floor(start) - start) / d, (ceil(start) - start) / d, (d > float4(0.f, 0.f, 0.f, 0.f)));
 
-	// first voxel
-    float4 voxel = floor(start);
-    WriteOutput(voxel);
-    // GapDetection(voxel, flatAdvance, pAxis, normal, v0, v1, v2);
-    while (steps-- >= 0)
-    {
-		// Determine the next 6Neighbour to visit
-        const float4 minTMax = min(min(tMax.x, tMax.y), tMax.z);
-        float4 TMaxStep = float4(minTMax == tMax);
+    while (steps >= 0/* tMax.x < 1 || tMax.y < 1 || tMax.z < 1 */)
+    {        
+        float3 barycentric = GetBarycentricCoordinates(currentVoxel, v0, v1, v2, normal);
+        float3 velocity = barycentric.x * velocity0 + barycentric.y * velocity1 + barycentric.z * velocity2;
+        WriteOutput(currentVoxel, velocity);
 
-    	// Bias opposing the flat advance Direction
-        TMaxStep = lerp(TMaxStep, (TMaxStep != flatAdvance), dot(TMaxStep, TMaxStep) > 1.0f);   // TODO: might be this causing extrusion
-        voxel += TMaxStep * step;
-        tMax += TMaxStep * tDelta;
-        WriteOutput(voxel);
-        // GapDetection(voxel, flatAdvance, pAxis, normal, v0, v1, v2);
+        if (tMax.x < tMax.y && tMax.x < tMax.z)
+        {
+            currentVoxel.x += step.x;
+            tMax.x += deltaT.x;
+        }
+        else if (tMax.y < tMax.z)
+        {
+            currentVoxel.y += step.y;
+            tMax.y += deltaT.y;
+        }
+        else
+        {
+            currentVoxel.z += step.z;
+            tMax.z += deltaT.z;
+        }
+        steps--;
     }
 }
 
-void VoxelizeTriangle(float4 v0, float4 v1, float4 v2, float4 normal)
+void VoxelizeTriangle(float4 v0, float4 v1, float4 v2, float4 normal, float3 velocity0, float3 velocity1, float3 velocity2)
 {
 	// Step 1 - Initialization
     float4 pAxis = CalcPrimaryAxis(v0, v1, v2);
 
-    SortVertices( /*inout*/v0, /*inout*/v1, /*inout*/v2, pAxis);
+    SortVertices( v0, v1, v2, pAxis);
     float4 flatAdvance = CalcFlatAdvance(pAxis, normal);
 
-
-	// Step 2 - Interior Traversal stating
-	// from v2’s height along the primary axis
-    /*int h = int(dot(v2, pAxis));
+	// Step 2 - Interior Traversal stating from v2’s height along the primary axis
+    int h = int(dot(v2, pAxis));
 
 	// Bottom half, up to v1’s height
     while (h <= int(dot(v1, pAxis)))
     {
         float4 start = PointInEdge(v2, v0, h, pAxis);
         float4 end = PointInEdge(v2, v1, h, pAxis);
-        Scanline(start, end, flatAdvance, normal, pAxis, v0, v1, v2);
+        Scanline(start, end, flatAdvance, normal, pAxis, v0, v1, v2, velocity0, velocity1, velocity2);
         h = h + 1;
     }
 
@@ -213,26 +265,29 @@ void VoxelizeTriangle(float4 v0, float4 v1, float4 v2, float4 normal)
     {
         float4 start = PointInEdge(v2, v0, h, pAxis);
         float4 end = PointInEdge(v1, v0, h, pAxis);
-        Scanline(start, end, flatAdvance, normal, pAxis, v0, v1, v2);
+        Scanline(start, end, flatAdvance, normal, pAxis, v0, v1, v2, velocity0, velocity1, velocity2);
         h = h + 1;
-    }*/
+    }
 
 	// Step 3 - Edge Voxelization
-
-    Scanline(v0, v1, flatAdvance, normal, pAxis, v0, v1, v2);
-    Scanline(v1, v2, flatAdvance, normal, pAxis, v0, v1, v2);
-    Scanline(v2, v0, flatAdvance, normal, pAxis, v0, v1, v2);
+    Scanline(v0, v1, flatAdvance, normal, pAxis, v0, v1, v2, velocity0, velocity1, velocity2);
+    Scanline(v1, v2, flatAdvance, normal, pAxis, v0, v1, v2, velocity0, velocity1, velocity2);
+	Scanline(v2, v0, flatAdvance, normal, pAxis, v0, v1, v2, velocity0, velocity1, velocity2);
 }
 
 #define DEBUG 0
 
 [numthreads(32, 1, 1)]
-void VoxelizeMesh(uint3 DTid : SV_DispatchThreadID)
+void VoxelizeMesh(uint DTid : SV_DispatchThreadID)
 {
-    if (DTid.x >= TriangleCount) { return; }
+    if (DTid >= TriangleCount)
+    {
+        return;
+    }
 
     float3 vertices[3];
-    LoadTriangle(DTid, vertices[0], vertices[1], vertices[2]);
+    float3 velocities[3];
+    LoadTriangle(DTid, vertices[0], vertices[1], vertices[2], velocities[0], velocities[1], velocities[2]);
 
     float4 v0 = float4(vertices[0], 1.0f);
     float4 v1 = float4(vertices[1], 1.0f);
@@ -246,12 +301,13 @@ void VoxelizeMesh(uint3 DTid : SV_DispatchThreadID)
     v1.xyz -= GridMin;
     v2.xyz -= GridMin;
 
-    float4 normal = float4(normalize(cross(v0.xyz, v1.xyz)), 1);
+    // Adjusted for UE's left hand coordinate system, 
+    float4 normal = -float4(normalize(cross(v1.xyz - v0.xyz, v2.xyz - v0.xyz)), 0); 
 
 #if DEBUG
    
 #else
-	VoxelizeTriangle(v0, v1, v2, normal);  //TODO: add normal
+	VoxelizeTriangle(v0, v1, v2, normal, velocities[0], velocities[1], velocities[2]);
 #endif
     
 }
@@ -275,7 +331,8 @@ uint GetCpyDstIdx(in uint texelX, in uint texelY, in uint texelZ)
 [numthreads(4, 4, 4)]
 void CpyVoxelGridToSimulation(uint3 DTid : SV_DispatchThreadID)
 {
-    if (DTid.x >= VoxelGridDimension.x || DTid.y >= VoxelGridDimension.y || DTid.z >= VoxelGridDimension.z)
+    if (any(DTid >= VoxelGridDimension) || 
+            any(DTid < 1) || any(DTid >= SimDimension - 1)) // prevent overwriting simulation boundary
     {
 	    return;
     }
@@ -283,8 +340,6 @@ void CpyVoxelGridToSimulation(uint3 DTid : SV_DispatchThreadID)
     uint srcIdx = DTid.x + DTid.y * VoxelGridDimension.x + DTid.z * VoxelGridDimension.x * VoxelGridDimension.y;
     uint dstIdx = GetCpyDstIdx(DTid.x, DTid.y, DTid.z);
 
-    if (CpySrcVoxelGridBuffer[srcIdx] > 0)
-    {
-        CpyDstDebugBuffer[dstIdx] = 1;
-    }
+
+        CpyDstDebugBuffer[dstIdx] = CpySrcVoxelGridBuffer[srcIdx];
 }
