@@ -207,13 +207,19 @@ void DispatchLBMCollision3D_RenderThread(FRHICommandList& RHICmdList, FSimulatio
 	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
 }
 
-void DispatchLBMMRInitialState3D_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
+void DispatchLBMMRInitialState3D_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource3D* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
 {
 	TShaderMapRef<FLBMMRInitialState3DShaderCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMMRInitialState3DShaderCS::FParameters Parameters{};
+		Parameters.InitialDensity = Resource->Params.InitialDensity;
+		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
+		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
+		Parameters.SimDimension = Resource->Params.SimDimensions;
+		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
+		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
@@ -221,13 +227,19 @@ void DispatchLBMMRInitialState3D_RenderThread(FRHICommandList& RHICmdList, FSimu
 	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
 }
 
-void DispatchLBMMRStreamingCollision3D_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
+void DispatchLBMMRStreamingCollision3D_RenderThread(FRHICommandList& RHICmdList, FSimulationShaderResource3D* Resource, uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ)
 {
 	TShaderMapRef<FLBMMRStreamingCollision3DShaderCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
 	{
 		typename FLBMMRStreamingCollision3DShaderCS::FParameters Parameters{};
+		Parameters.InitialDensity = Resource->Params.InitialDensity;
+		Parameters.InitialVelocity = Resource->Params.InitialVelocity;
+		Parameters.RelaxationFactor = Resource->Params.RelaxationFactor;
+		Parameters.SimDimension = Resource->Params.SimDimensions;
+		Parameters.DebugTextureSlice = Resource->Params.DebugTextureSlice;
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
+		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}

@@ -266,19 +266,27 @@ public:
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR InitialState 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void LBMMRInitialState3D() {
-		ENQUEUE_RENDER_COMMAND(FLBMMRInitialState)([](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void LBMMRInitialState3D(int debugTextureSlice) {
+		ENQUEUE_RENDER_COMMAND(FLBMMRInitialState)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
 			{
-				DispatchLBMMRInitialState3D_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 16, 16, 16);
+				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
+				DispatchLBMMRInitialState3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(), 
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4, 
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4);
 			});
 		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM MR Streaming Collision 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void LBMMRStreamingCollision3D() {
-		ENQUEUE_RENDER_COMMAND(FLBMMRStreamingCollision)([](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void LBMMRStreamingCollision3D(int debugTextureSlice) {
+		ENQUEUE_RENDER_COMMAND(FLBMMRStreamingCollision)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
 			{
-				DispatchLBMMRStreamingCollision3D_RenderThread(RHICmdList, FSimulationShaderResource::Get(), 63, 63, 63); // margin the last row/col of cells
+				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
+				DispatchLBMMRStreamingCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(),
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4); // margin the last row/col of cells
 			});
 		FlushRenderingCommands();
 	}

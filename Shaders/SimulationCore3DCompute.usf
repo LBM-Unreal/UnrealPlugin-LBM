@@ -756,6 +756,7 @@ void LBM_MR_Streaming_Collision3D(
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
+    AllMemoryBarrierWithGroupSync();
     
     int boundary;
     // inner cell - only the center
@@ -824,4 +825,8 @@ void LBM_MR_Streaming_Collision3D(
     DebugTexture3D[uint3(texelX, texelY, texelZ)].x = length(u_);
     DebugTexture3D[uint3(texelX, texelY, texelZ)].y = 0.;
     DebugTexture3D[uint3(texelX, texelY, texelZ)].z = rho;
+    if (texelZ == DEBUG_TEXTURE_SLICE)
+    {
+        StoreDebugTexture2D(texelX, texelY, float4(length(u_), 0, rho, 0));
+    }
 }

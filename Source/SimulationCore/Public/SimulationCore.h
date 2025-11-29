@@ -185,12 +185,12 @@ void SIMULATIONCORE_API DispatchLBMCollision3D_RenderThread(
 
 void SIMULATIONCORE_API DispatchLBMMRInitialState3D_RenderThread(
 	FRHICommandList& RHICmdList,
-	FSimulationShaderResource* Resource,
+	FSimulationShaderResource3D* Resource,
 	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
 
 void SIMULATIONCORE_API DispatchLBMMRStreamingCollision3D_RenderThread(
 	FRHICommandList& RHICmdList,
-	FSimulationShaderResource* Resource,
+	FSimulationShaderResource3D* Resource,
 	uint32 ThreadGroupX, uint32 ThreadGroupY, uint32 ThreadGroupZ);
 
 void SIMULATIONCORE_API DispatchLBMBoundaryTreatment3D_RenderThread(
