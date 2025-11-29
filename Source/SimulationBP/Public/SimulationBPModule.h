@@ -291,6 +291,19 @@ public:
 		FlushRenderingCommands();
 	}
 
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM HOME Streaming Collision 3D"), Category = "LBM Sim")
+	static SIMULATIONBP_API void LBMHOMEStreamingCollision3D(int debugTextureSlice) {
+		ENQUEUE_RENDER_COMMAND(FLBMMRStreamingCollision)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
+			{
+				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
+				DispatchLBMHOMEStreamingCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(),
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 4 - 1,
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 4 - 1,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 4 - 1); // margin the last row/col of cells
+			});
+		FlushRenderingCommands();
+	}
+
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "LBM BoundaryTreatment 3D"), Category = "LBM Sim")
 	static SIMULATIONBP_API void LBMBoundaryTreatment3D(int debugTextureSlice) {
 		ENQUEUE_RENDER_COMMAND(FLBMBoundaryTreatment3D)([debugTextureSlice](FRHICommandListImmediate& RHICmdList)
