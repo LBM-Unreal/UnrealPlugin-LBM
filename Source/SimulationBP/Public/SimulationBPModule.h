@@ -347,20 +347,21 @@ public:
 	{
 		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin](FRHICommandListImmediate& RHICmdList)
 			{
-				auto* VoxelGridResouce = FVoxelGridResource::Get();
+				auto* VoxelGridResource = FVoxelGridResource::Get();
+                auto* VertexVelocityResource = FVertexVelocityResource::Get();
 				auto* SimResource = FSimulationShaderResource3D::Get();
 				auto SimDim = SimResource->Params.SimDimensions;
 				constexpr int BlockSize = 4;
 
 				// Clear Buffer
-				ClearVoxelGridBuffer_RenderThread(RHICmdList, VoxelGridResouce);
+				ClearVoxelGridBuffer_RenderThread(RHICmdList, VoxelGridResource);
 
 				// Voxelize
-				DispatchVoxelizeMesh_RenderThread(RHICmdList, VoxelGridResouce, SMActor, Origin, FIntVector(GridDim));
+				DispatchVoxelizeMesh_RenderThread(RHICmdList, VoxelGridResource, VertexVelocityResource, SMActor, Origin, FIntVector(GridDim));
 
 				// Copy to Simulation Buffer
 				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList,
-					VoxelGridResouce,
+					VoxelGridResource,
 					SimResource->DebugBuffer.UAV, SimDim,
 					(SimDim.X + BlockSize - 1) / BlockSize,
 					(SimDim.Y + BlockSize - 1) / BlockSize,

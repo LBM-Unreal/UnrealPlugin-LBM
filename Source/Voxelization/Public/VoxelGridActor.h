@@ -42,9 +42,40 @@ public:
 
     UFUNCTION(CallInEditor)
     void Visualize();
-private:
+
+    UFUNCTION(CallInEditor)
+    void CalculateVertexVelocity();
+
+/** Debug */ 
+    TArray<FVector3f> VertexVelocitiesCPU;
+
+    UFUNCTION(CallInEditor, Category = "Debug")
+    void CopyVelocityToCPU();
+
+
+    TArray<FVector3f> VoxelGridVelocitiesCPU;
+
+    UFUNCTION(CallInEditor, Category = "Debug")
+    void CopyVoxelGridVelocityToCPU();
+
+
+    UFUNCTION(BlueprintCallable, Category = "Debug")
+	void DemoTick(float DeltaTime);
+
+
+    UFUNCTION(BlueprintCallable, Category = "Debug")
+    void DemoVisualize();
+
+    UFUNCTION(BlueprintCallable, Category = "Debug")
+    void DemoTickCPU();
+
+    UFUNCTION(BlueprintCallable, Category = "Debug")
+    void DemoVisualizeCPU();
+
+    UFUNCTION(CallInEditor, Category = "Debug")
+    void GPUDebug();
+
+    UFUNCTION(CallInEditor, Category = "Debug")
+    void CPUDebug();
 
 };
-
-
-
