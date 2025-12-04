@@ -3,6 +3,7 @@
 #include "GameFramework/Actor.h"
 #include "VoxelGrid.h"
 #include "ProceduralMeshComponent.h"
+#include "VoxelizationModule.h"
 #include "Components/BoxComponent.h"
 
 UVoxelGridVisualizationComponent::UVoxelGridVisualizationComponent()
@@ -37,70 +38,121 @@ void UVoxelGridVisualizationComponent::OnRegister()
 
 void UVoxelGridVisualizationComponent::UpdateVisualization(const FVoxelGrid& VoxelGrid)
 {
+    UE_LOG(LogVoxelization, Display, TEXT("VoxelGridVisualizationComponent::UpdateVisualization: Converting voxel to mesh..."));
     // Visualize bound
 
     // Visualize mesh
-    TArray<FVector> Vertices;
-    TArray<int32> Triangles;
-
+    TArray<FVector> Vertices{};
+    TArray<int32> Triangles{};
 
     const FVector Origin(VoxelGrid.Origin);
     const FVector Step(VoxelGrid.VoxelSize);
-    const FVector GridDim(VoxelGrid.GridDim);
+    const FIntVector GridDim(VoxelGrid.GridDim);
     const auto& VoxelData = VoxelGrid.ImmovableMeshOccupancy;
 
     if (VoxelData.Num() != GridDim.X * GridDim.Y * GridDim.Z)
     {
-        UE_LOG(LogTemp, Warning, TEXT("VoxelGridVisualizationComponent::UpdateVisualization: Voxel data size mismatch"));
+        UE_LOG(LogVoxelization, Warning, TEXT("VoxelGridVisualizationComponent::UpdateVisualization: Voxel data size mismatch"));
         return;
     }
 
-    constexpr int CubeVertsCount = 8;
-    constexpr int CubeTrianglesCount = 36;
-
-    auto AddCube = [&](const FVector& BasePos)
-        {
-            int vStart = Vertices.Num();
-            FVector P[CubeVertsCount] = {
-                BasePos + FVector(0,0,0) * Step,
-                BasePos + FVector(1,0,0) * Step,
-                BasePos + FVector(1,1,0) * Step,
-                BasePos + FVector(0,1,0) * Step,
-                BasePos + FVector(0,0,1) * Step,
-                BasePos + FVector(1,0,1) * Step,
-                BasePos + FVector(1,1,1) * Step,
-                BasePos + FVector(0,1,1) * Step
-            };
-            Vertices.Append(P, CubeVertsCount);
-
-            int F[CubeTrianglesCount] = {
-                3,2,6, 3,6,7, // front
-                1,0,4, 1,4,5, // back
-                0,3,7, 0,7,4, // left
-                2,1,5, 2,5,6, // right
-                7,6,5, 7,5,4, // top
-                0,1,2, 0,2,3  // bottom
-
-            };
-
-            for (int i = 0; i < CubeTrianglesCount; ++i)
-            {
-                Triangles.Add(vStart + F[i]);
-            }
-        };
-
-    for (int Z = 0; Z < GridDim.Z; ++Z)
+    // Helper function to check if a neighbor voxel exists and is solid
+    auto IsVoxelSolid = [&](int32 X, int32 Y, int32 Z) -> bool
     {
-        for (int Y = 0; Y < GridDim.Y; ++Y)
+        if (X < 0 || X >= GridDim.X || Y < 0 || Y >= GridDim.Y || Z < 0 || Z >= GridDim.Z)
         {
-            for (int X = 0; X < GridDim.X; ++X)
+            return false; // Out of bounds = no neighbor = face is exposed
+        }
+        int32 idx = X + Y * GridDim.X + Z * GridDim.X * GridDim.Y;
+        return VoxelData[idx] == 1;
+    };
+
+    // Helper function to add a quad face
+    auto AddQuad = [&](const FVector& V0, const FVector& V1, const FVector& V2, const FVector& V3)
+    {
+        int32 vStart = Vertices.Num();
+        Vertices.Add(V0);
+        Vertices.Add(V1);
+        Vertices.Add(V2);
+        Vertices.Add(V3);
+        
+        // Add two triangles for the quad (counter-clockwise winding)
+        Triangles.Add(vStart + 0);
+        Triangles.Add(vStart + 1);
+        Triangles.Add(vStart + 2);
+        Triangles.Add(vStart + 0);
+        Triangles.Add(vStart + 2);
+        Triangles.Add(vStart + 3);
+    };
+
+    int WrittenVoxels = 0;
+    // Iterate through all voxels and only add exposed faces
+    for (int32 Z = 0; Z < GridDim.Z; ++Z)
+    {
+        for (int32 Y = 0; Y < GridDim.Y; ++Y)
+        {
+            for (int32 X = 0; X < GridDim.X; ++X)
             {
-                int idx = X + Y * GridDim.X + Z * GridDim.X * GridDim.Y;
-                if (VoxelData[idx] == 1)
-                    AddCube(Origin + FVector(X, Y, Z) * Step);
+                int32 idx = X + Y * GridDim.X + Z * GridDim.X * GridDim.Y;
+                if (VoxelData[idx] != 1)
+                {
+                    continue; // Skip empty voxels
+                }
+
+                FVector BasePos = Origin + FVector(X, Y, Z) * Step;
+                
+                // Define the 8 vertices of the cube
+                FVector V000 = BasePos + FVector(0, 0, 0) * Step;
+                FVector V100 = BasePos + FVector(1, 0, 0) * Step;
+                FVector V110 = BasePos + FVector(1, 1, 0) * Step;
+                FVector V010 = BasePos + FVector(0, 1, 0) * Step;
+                FVector V001 = BasePos + FVector(0, 0, 1) * Step;
+                FVector V101 = BasePos + FVector(1, 0, 1) * Step;
+                FVector V111 = BasePos + FVector(1, 1, 1) * Step;
+                FVector V011 = BasePos + FVector(0, 1, 1) * Step;
+
+                // Only add faces that are exposed (no solid neighbor)
+                
+                // Front face (+Y direction)
+                if (!IsVoxelSolid(X, Y + 1, Z))
+                {
+                    AddQuad(V010, V110, V111, V011);
+                }
+
+                // Back face (-Y direction)
+                if (!IsVoxelSolid(X, Y - 1, Z))
+                {
+                    AddQuad(V100, V000, V001, V101);
+                }
+
+                // Right face (+X direction)
+                if (!IsVoxelSolid(X + 1, Y, Z))
+                {
+                    AddQuad(V110, V100, V101, V111);
+                }
+
+                // Left face (-X direction)
+                if (!IsVoxelSolid(X - 1, Y, Z))
+                {
+                    AddQuad(V000, V010, V011, V001);
+                }
+
+                // Top face (+Z direction)
+                if (!IsVoxelSolid(X, Y, Z + 1))
+                {
+                    AddQuad(V011, V111, V101, V001);
+                }
+
+                // Bottom face (-Z direction)
+                if (!IsVoxelSolid(X, Y, Z - 1))
+                {
+                    AddQuad(V000, V100, V110, V010);
+                }
+
+                WrittenVoxels++;
             }
         }
     }
-
     ProceduralMesh->CreateMeshSection(0, Vertices, Triangles, {}, {}, {}, {}, false);
+    UE_LOG(LogVoxelization, Display, TEXT("VoxelGridVisualizationComponent::UpdateVisualization: Mesh generated with %d voxels"), WrittenVoxels);
 }

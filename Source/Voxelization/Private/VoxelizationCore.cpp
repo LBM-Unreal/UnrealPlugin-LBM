@@ -84,7 +84,6 @@ void DispatchCopyVoxelGridToSim_RenderThread(
         UE_LOG(LogVoxelization, Warning, TEXT("DispatchCopyVoxelGridToSim_RenderThread: mismatched dimension: VoxelGrid[%d, %d, %d], SimulationBuffer[%d, %d, %d]"), 
             VoxelGridResource->GridDim.X, VoxelGridResource->GridDim.Y, VoxelGridResource->GridDim.Z, 
             SimDimension.X, SimDimension.Y, SimDimension.Z)
-        //return;
     }
 
     TShaderMapRef<FCopyVoxelGridToSimCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -118,11 +117,13 @@ void VOXELIZATION_API DispatchVoxelizeMesh_RenderThread(
     if (VoxelGridDimension != VoxelGridResource->GridDim)
     {
         UE_LOG(LogVoxelization, Warning,
-            TEXT("DispatchVoxelizeMesh_RenderThread: mismatched dimension:VoxelGridBuffer[%d, %d, %d], specified voxel grid dimension[%d, %d, %d]. Stopped execution."),
+            TEXT("DispatchVoxelizeMesh_RenderThread: mismatched dimension:VoxelGridBuffer[%d, %d, %d], specified voxel grid dimension[%d, %d, %d]."),
             VoxelGridResource->GridDim.X, VoxelGridResource->GridDim.Y, VoxelGridResource->GridDim.Z,
             VoxelGridDimension.X, VoxelGridDimension.Y, VoxelGridDimension.Z)
-            return;
+
+    	VoxelGridResource->GridDim = VoxelGridDimension;
     }
+    VoxelGridResource->GridOrigin = VoxelGridOrigin;
 
     TShaderMapRef<FVoxelizationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
     SetComputePipelineState(RHICmdList, Shader.GetComputeShader());
@@ -194,11 +195,20 @@ void VOXELIZATION_API DispatchVoxelizeMesh_RenderThread(
 
 void ClearVoxelGridBuffer_RenderThread(FRHICommandList& RHICmdList, FVoxelGridResource* VoxelGridResource)
 {
-    auto BufferLength = VoxelGridResource->GetBufferLength();
+    uint32 BufferLength = VoxelGridResource->GetBufferLength();
+    uint32 BufferSize = BufferLength * sizeof(uint32);
+
+	if (VoxelGridResource->ImmovableMeshOccupancyBuffer.NumBytes != BufferSize)
+	{
+        UE_LOG(LogVoxelization, Warning, TEXT("ClearVoxelGridBuffer_RenderThread: Buffer size mismatch. Requested %d, allocated %d. Reallocating buffer..."),
+            BufferSize,
+            VoxelGridResource->ImmovableMeshOccupancyBuffer.NumBytes)
+		VoxelGridResource->UpdateRHI(RHICmdList);
+	}
 
     // TODO: optimize using compute shader
-    void* OutputGPUBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferLength * sizeof(uint32), RLM_WriteOnly);
-    FMemory::Memset(OutputGPUBuffer, 0, BufferLength * sizeof(uint32));
+    void* OutputGPUBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferSize, RLM_WriteOnly);
+    FMemory::Memset(OutputGPUBuffer, 0, BufferSize);
     // UnlockBuffer
     RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer);
 }
@@ -207,7 +217,6 @@ void ClearVoxelGridBuffer_RenderThread(FRHICommandList& RHICmdList, FVoxelGridRe
 void CopyVoxelGridToCPU_RenderThread(FRHICommandList& RHICmdList, FVoxelGridResource* VoxelGridResource, FVoxelGrid* VoxelGrid)
 {
     uint32 BufferSize = VoxelGridResource->GetBufferLength();
-    VoxelGrid->Origin = VoxelGridResource->GridOrigin;
     if (VoxelGrid->GridDim != VoxelGridResource->GridDim || static_cast<uint32>(VoxelGrid->ImmovableMeshOccupancy.Max()) < BufferSize)
     {
         VoxelGrid->GridDim = VoxelGridResource->GridDim;
@@ -251,3 +260,58 @@ void DispatchCalculateVertexVelocity_RenderThread(FRHICommandList& RHICmdList, F
 	UnsetShaderSRVs(RHICmdList, Shader, Shader.GetComputeShader());
 	UnsetShaderUAVs(RHICmdList, Shader, Shader.GetComputeShader());
 }
+
+TArray<ULandscapeComponent*> GetOverlappingLandscapeComponents(ALandscape* LandscapeActor, FBox VoxelGridBounds)
+{
+
+    TArray<ULandscapeComponent*> OverlappingLandscapeComponents{};
+
+    // Validate landscape actor
+    if (!LandscapeActor)
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("GetOverlappingLandscapeComponents: No LandscapeActor assigned"));
+        return OverlappingLandscapeComponents;
+    }
+
+    // Get all landscape components from the landscape actor
+    TArray<ULandscapeComponent*> AllComponents;
+    LandscapeActor->GetComponents<ULandscapeComponent>(AllComponents);
+
+    UE_LOG(LogVoxelization, Display, TEXT("GetOverlappingLandscapeComponents: Scanning %d landscape components"), AllComponents.Num());
+
+    // Check each component for overlap
+    for (ULandscapeComponent* Component : AllComponents)
+    {
+        if (!Component || !Component->IsValidLowLevel())
+        {
+            continue;
+        }
+
+        // Get component bounding box
+        FBox ComponentBounds = Component->Bounds.GetBox();
+
+        // Check if bounding boxes overlap
+        if (VoxelGridBounds.Intersect(ComponentBounds))
+        {
+            OverlappingLandscapeComponents.Add(Component);
+
+            UE_LOG(LogVoxelization, Display, TEXT("GetOverlappingLandscapeComponents: Found overlapping component - SectionBase: (%d, %d), Bounds: Min(%f, %f, %f), Max(%f, %f, %f)"),
+                Component->SectionBaseX, Component->SectionBaseY,
+                ComponentBounds.Min.X, ComponentBounds.Min.Y, ComponentBounds.Min.Z,
+                ComponentBounds.Max.X, ComponentBounds.Max.Y, ComponentBounds.Max.Z);
+        }
+    }
+
+    UE_LOG(LogVoxelization, Display, TEXT("DebugFunc0: Found %d overlapping landscape components"), OverlappingLandscapeComponents.Num());
+
+    return OverlappingLandscapeComponents;
+}
+
+void ClearImmovableMeshVoxelGridBuffer_Host(FVoxelGrid* VoxelGrid)
+{
+	for (uint32& VoxelValue : VoxelGrid->ImmovableMeshOccupancy)
+    {
+        VoxelValue = 0;
+    }
+}
+

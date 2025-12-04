@@ -1,15 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "Landscape.h"
 #include "VoxelGrid.h"
 #include "VoxelGridActor.generated.h"
-
-
-// Affecting area (clamp to grid )
-// Static Mesh Actor list
-
-// voxel buffer (tex3d? structured buffer?)
 
 class UVoxelGridVisualizationComponent;
 
@@ -27,9 +21,10 @@ public:
     UPROPERTY(EditAnywhere, Category = "Voxel")
     TArray<AStaticMeshActor*> ImmovableMeshes;
 
-
     UVoxelGridVisualizationComponent* VoxelMeshVisualization;
 
+    UPROPERTY(EditAnywhere, Category = "Voxel")
+    ALandscape* LandscapeActor;
 
     UFUNCTION(CallInEditor)
     void CopyBufferToCPU();
@@ -78,4 +73,11 @@ public:
     UFUNCTION(CallInEditor, Category = "Debug")
     void CPUDebug();
 
+    UFUNCTION(CallInEditor, BlueprintCallable, Category = "Debug")
+    void DebugFunc0();
+
+    // Store overlapping landscape components
+    UPROPERTY(VisibleAnywhere, Category = "Debug")
+    TArray<ULandscapeComponent*> OverlappingLandscapeComponents;
+    
 };

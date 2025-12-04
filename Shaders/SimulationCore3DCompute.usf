@@ -119,7 +119,7 @@ void StoreBoundaryValues3D(in uint texelX, in uint texelY, in uint texelZ, in fl
 
 float sphere3D(float3 p, float3 center, float radius)
 {
-    return length(p - center) - radius;
+    return length(p.xy - center.xy) - radius;
 }
 
 float GetEquilibrium(float3 u, float p, float3 ci, float wi)
@@ -168,7 +168,7 @@ void LBM_InitialState3D(
     }
     // inside solid boundary
     float3 center = float3(SimDimension.x / 2., SimDimension.y / 2., SimDimension.z / 2.);
-    float radius = 10;
+    float radius = 7;
     float d = sphere3D(float3(texelX, texelY, texelZ), center, radius);
     if (d < 0.)
     {
@@ -522,7 +522,7 @@ void StoreMomentRepSimulationData3D(in int texelX, in int texelY, in int texelZ,
     
     DebugBuffer[10 + 11 * index] = boundary;
 }
-
+#define INIT_VELO 0.2
 [numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
 void LBM_MR_InitialState3D(
 	uint3 DispatchThreadId : SV_DispatchThreadID,
@@ -541,7 +541,7 @@ void LBM_MR_InitialState3D(
     
     
     float3 u = float3(0., 0., 0.);
-    float rho = 0.03;
+    float rho = 0.3;
     
     int boundary = 0;
     // process all boundary settings
@@ -552,8 +552,8 @@ void LBM_MR_InitialState3D(
         boundary = 1; // type 1 lattice
     }
     // inside solid boundary
-    float3 center = float3(128., 128., 128.);
-    float radius = 10;
+    float3 center = float3(42., 128., 128.);
+    float radius = 20;
     float d = sphere3D(float3(texelX, texelY, texelZ), center, radius);
     if (d < 0.)
     {
@@ -562,8 +562,8 @@ void LBM_MR_InitialState3D(
     if (texelX == 0)
     {
         boundary = 2; // type 2 lattice with fixed velocity
-        u = float3(0.1, 0.0, 0.0);
-        rho = 0.06;
+        u = float3(INIT_VELO, 0.0, 0.0);
+        rho = 0.3;
 
     }
     if (texelX == SimDimension.x - 1 && 
@@ -586,7 +586,7 @@ void LBM_MR_InitialState3D(
     DebugTexture3D[uint3(texelX, texelY, texelZ)].x = length(u);
     DebugTexture3D[uint3(texelX, texelY, texelZ)].y = 0.;
     DebugTexture3D[uint3(texelX, texelY, texelZ)].z = rho;
-}
+	}
 
 [numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
 void LBM_MR_Streaming_Collision3D(
@@ -807,7 +807,7 @@ void LBM_MR_Streaming_Collision3D(
         m_.zx /= rho;
     
         // collide using moments
-        float omega = 1. / 0.6;
+        float omega = 1. / 0.501;
         m_.xx = (1. - omega) * m_.xx + omega * u_.x * u_.x;
         m_.yy = (1. - omega) * m_.yy + omega * u_.y * u_.y;
         m_.zz = (1. - omega) * m_.zz + omega * u_.z * u_.z;
@@ -817,15 +817,17 @@ void LBM_MR_Streaming_Collision3D(
     }
     if (boundary == 2)
     {
-        u_ = float3(0.1, 0.0, 0.0);
-        rho = 0.06;
+        u_ = float3(INIT_VELO, 0.0, 0.0);
+        rho = 0.03;
     }
     if (boundary == 3)
     {
         ReadMomentRepSimulationData3D(texelX - 1, texelY, texelZ, rho, u_, m_, boundary);
     }
-    
-    StoreMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u_, m_, boundary);
+    if (boundary==0)
+    {
+        StoreMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u_, m_, boundary);
+    }
     DebugTexture3D[uint3(texelX, texelY, texelZ)].x = length(u_);
     DebugTexture3D[uint3(texelX, texelY, texelZ)].y = 0.;
     DebugTexture3D[uint3(texelX, texelY, texelZ)].z = rho;
@@ -875,7 +877,7 @@ float HOME_ReconstructFi_3D(
         + H3_yyz * (m_.yy * u.z + 2.0 * m_.yz * u.y - 2.0 * u.y * u.y * u.z)
         + H3_xyz * (m_.zx * u.y + m_.yz * u.x + m_.xy * u.z - 2.0 * u.x * u.y * u.z);
 
-    // ---- Æ´³É fi ----
+    // ---- Æ´ï¿½ï¿½ fi ----
     float poly =
           1.0
         + 3.0 * cu
@@ -1106,7 +1108,7 @@ void LBM_HOME_Streaming_Collision3D(
     
         // collide using moments
         float3 F = float3(0., 0., 0.);
-        const float tau = 0.6;
+        const float tau = 0.505;
         
         u_ = u_star + 0.5 * F / rho;
         
@@ -1143,20 +1145,25 @@ void LBM_HOME_Streaming_Collision3D(
     }
     if (boundary == 2)
     {
-        u_ = float3(0.1, 0.0, 0.0);
-        rho = 0.06;
+        u_ = float3(INIT_VELO, 0.0, 0.0);
+        rho = 0.3;
     }
     if (boundary == 3)
     {
-        ReadMomentRepSimulationData3D(texelX - 1, texelY, texelZ, rho, u_, m_, boundary);
+        int b;
+        ReadMomentRepSimulationData3D(texelX - 1, texelY, texelZ, rho, u_, m_, b);
     }
-    
-    StoreMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u_, m_, boundary);
-    DebugTexture3D[uint3(texelX, texelY, texelZ)].x = length(u_);
-    DebugTexture3D[uint3(texelX, texelY, texelZ)].y = 0.;
-    DebugTexture3D[uint3(texelX, texelY, texelZ)].z = rho;
-    if (texelZ == DEBUG_TEXTURE_SLICE)
+    if (boundary==0 || boundary==3)
     {
-        StoreDebugTexture2D(texelX, texelY, float4(length(u_), 0, rho, 0));
+        StoreMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u_, m_, boundary);
+    }
+    float g = 0.;
+    if (boundary > 0)
+    {
+        g = 1.;
+    }
+    DebugTexture3D[uint3(texelX, texelY, texelZ)] = float4(u_, rho);
+    if (texelZ == DEBUG_TEXTURE_SLICE) {
+        StoreDebugTexture2D(texelX, texelY, float4(length(u_), g, rho, 0));
     }
 }

@@ -7,9 +7,9 @@ public class Voxelization : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "ProceduralMeshComponent" });
+		PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {"RHI", "RenderCore", "SimulationCore" });
+		PrivateDependencyModuleNames.AddRange(new string[] {"RHI", "RenderCore", "SimulationCore", "ProceduralMeshComponent", "Landscape"});
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

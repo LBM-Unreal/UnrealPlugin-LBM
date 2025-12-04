@@ -3,6 +3,8 @@
 #include "RHIResources.h"
 #include "RenderResource.h"
 #include "ShaderParameterStruct.h"
+#include "Landscape.h"
+#include "VoxelGrid.h"
 
 /* ---------------------------------------- Shaders ---------------------------------------------------- */
 // FVoxelizationCS
@@ -141,3 +143,8 @@ void VOXELIZATION_API DispatchCalculateVertexVelocity_RenderThread(
     FVertexVelocityResource* VertexVelocityResource,
     AStaticMeshActor* SMActor, 
 	float DeltaTime);
+
+TArray<ULandscapeComponent*> GetOverlappingLandscapeComponents(ALandscape* LandscapeActor, FBox VoxelGridBounds);
+
+void VOXELIZATION_API ClearImmovableMeshVoxelGridBuffer_Host(FVoxelGrid* VoxelGrid);
+

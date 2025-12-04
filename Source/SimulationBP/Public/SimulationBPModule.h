@@ -324,6 +324,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor"), Category = "LBM Sim")
 	static SIMULATIONBP_API void VoxelizeActor(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin, float VoxelSize) {
+
+		FlushRenderingCommands();
 		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
 			{
 				FVoxelMesh VoxelMesh;
@@ -334,6 +336,7 @@ public:
 				VoxelMesh.VoxelizeMeshInGrid(SMActor, false);
 				auto* VoxelizeResource = FVoxelGridResource::Get();
 				VoxelizeResource->GridDim = FIntVector(GridDim);
+				VoxelizeResource->GridOrigin = Origin;
 				auto SimDim = FSimulationShaderResource3D::Get()->Params.SimDimensions;
 				constexpr int BlockSize = 4;
 
@@ -353,11 +356,15 @@ public:
 					(SimDim.Y + BlockSize - 1) / BlockSize,
 					(SimDim.Z + BlockSize - 1) / BlockSize);
 			});
+
+		FlushRenderingCommands();
 	}
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor GPU"), Category = "LBM Sim")
 	static SIMULATIONBP_API void VoxelizeActorGPU(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin)
 	{
+
+		FlushRenderingCommands();
 		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin](FRHICommandListImmediate& RHICmdList)
 			{
 				auto* VoxelGridResource = FVoxelGridResource::Get();
@@ -366,12 +373,29 @@ public:
 				auto SimDim = SimResource->Params.SimDimensions;
 				constexpr int BlockSize = 4;
 
+				VoxelGridResource->GridOrigin = Origin;
+				if (VoxelGridResource->GridDim != FIntVector3(GridDim))
+				{
+					VoxelGridResource->GridDim = FIntVector3(GridDim);
+					VoxelGridResource->UpdateRHI(RHICmdList);
+				}
+
 				// Clear Buffer
 				ClearVoxelGridBuffer_RenderThread(RHICmdList, VoxelGridResource);
 
 				// Voxelize
 				DispatchVoxelizeMesh_RenderThread(RHICmdList, VoxelGridResource, VertexVelocityResource, SMActor, Origin, FIntVector(GridDim));
+			});
 
+		FlushRenderingCommands();
+
+		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin](FRHICommandListImmediate& RHICmdList)
+			{
+				auto* VoxelGridResource = FVoxelGridResource::Get();
+				auto* VertexVelocityResource = FVertexVelocityResource::Get();
+				auto* SimResource = FSimulationShaderResource3D::Get();
+				auto SimDim = SimResource->Params.SimDimensions;
+				constexpr int BlockSize = 4;
 				// Copy to Simulation Buffer
 				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList,
 					VoxelGridResource,
@@ -380,5 +404,6 @@ public:
 					(SimDim.Y + BlockSize - 1) / BlockSize,
 					(SimDim.Z + BlockSize - 1) / BlockSize);
 			});
+		FlushRenderingCommands();
 	}
 };

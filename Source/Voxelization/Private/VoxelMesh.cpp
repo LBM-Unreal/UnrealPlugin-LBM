@@ -129,13 +129,13 @@ void FVoxelMesh::VoxelizeMeshInGrid(const AStaticMeshActor* MeshActor, bool Rese
 
     if (VoxelSize < 0)
     {
-        UE_LOG(LogVoxelization, Warning, TEXT("Voxelization: invalid voxel size, got %f"), VoxelSize);
+        UE_LOG(LogVoxelization, Warning, TEXT("FVoxelMesh::VoxelizeMeshInGrid: invalid voxel size, got %f"), VoxelSize);
         return;
     }
 
     if (GridDim.X <= 0 || GridDim.Y <= 0 || GridDim.Z <= 0)
     {
-        UE_LOG(LogVoxelization, Warning, TEXT("Voxelization: invalid GridDim, got [%d, %d, %d]"), GridDim.X, GridDim.Y, GridDim.Z);
+        UE_LOG(LogVoxelization, Warning, TEXT("FVoxelMesh::VoxelizeMeshInGrid: invalid GridDim, got [%d, %d, %d]"), GridDim.X, GridDim.Y, GridDim.Z);
         return;
     }
 
@@ -151,7 +151,9 @@ void FVoxelMesh::VoxelizeMeshInGrid(const AStaticMeshActor* MeshActor, bool Rese
 
     const FTransform LocalToWorld = MeshActor->GetActorTransform();
 
+    int WrittenVoxels = 0;
     // Voxelize
+    UE_LOG(LogTemp, Warning, TEXT("Voxelizing mesh with %d indices... "), IB.GetNumIndices());
     for (int32 I = 0; I < IB.GetNumIndices(); I += 3)
     {
         FVector3f V0Local = VB.VertexPosition(IB.GetIndex(I + 0));
@@ -182,7 +184,6 @@ void FVoxelMesh::VoxelizeMeshInGrid(const AStaticMeshActor* MeshActor, bool Rese
         MaxGridBound.Y = FMath::Clamp(FMath::FloorToInt(MaxV.Y), 0, GridDim.Y - 1);
         MaxGridBound.Z = FMath::Clamp(FMath::FloorToInt(MaxV.Z), 0, GridDim.Z - 1);
 
-        UE_LOG(LogVoxelization, Display, TEXT("Voxelizing Triangle %d / %d"), I / 3, IB.GetNumIndices() / 3 - 1)
         // Naively traverse the voxel bounds and test intersection
         for (int Z = MinGridBound.Z; Z <= MaxGridBound.Z; ++Z)
         {
@@ -196,11 +197,13 @@ void FVoxelMesh::VoxelizeMeshInGrid(const AStaticMeshActor* MeshActor, bool Rese
                     if (TriangleAABBTest(V0World, V1World, V2World, VoxelCenter, VoxelHalfSize))
                     {
                         Set(X, Y, Z, 1);
+                        WrittenVoxels++;
                     }
                 }
             }
         }
     }
+    UE_LOG(LogVoxelization, Display, TEXT("FVoxelMesh::VoxelizeMeshInGrid: Finished, Voxelizd %d triangles into %d voxels"), IB.GetNumIndices() / 3 - 1, WrittenVoxels);
 }
 
 

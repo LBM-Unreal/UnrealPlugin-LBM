@@ -25,6 +25,14 @@ struct VOXELIZATION_API FVoxelGrid
 
     /** Voxel data of movable mesh */
     TArray<uint32> MovableMeshOccupancy;
+
+    FORCEINLINE void SetGridDim(FIntVector InGridDim)
+    {
+        GridDim = InGridDim;
+        auto NewBufferLength = InGridDim.X * InGridDim.Y * InGridDim.Z;
+        ImmovableMeshOccupancy.SetNumZeroed(NewBufferLength, EAllowShrinking::Yes);
+        MovableMeshOccupancy.SetNumZeroed(NewBufferLength, EAllowShrinking::Yes);
+    }
 };
 
 
@@ -50,6 +58,7 @@ public:
     {
         return GridDim.X * GridDim.Y * GridDim.Z;
     }
+
 private:
 	FVoxelGridResource() : GridDim(FIntVector(16,16,16))
     {
