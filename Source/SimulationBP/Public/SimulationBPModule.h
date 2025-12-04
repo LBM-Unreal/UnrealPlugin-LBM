@@ -326,7 +326,7 @@ public:
 	static SIMULATIONBP_API void VoxelizeActor(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin, float VoxelSize) {
 
 		FlushRenderingCommands();
-		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(FUpdateVoxelDataCPU)([SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
 			{
 				FVoxelMesh VoxelMesh;
 				VoxelMesh.SetGridDim(FIntVector(GridDim));
@@ -338,7 +338,6 @@ public:
 				VoxelizeResource->GridDim = FIntVector(GridDim);
 				VoxelizeResource->GridOrigin = Origin;
 				auto SimDim = FSimulationShaderResource3D::Get()->Params.SimDimensions;
-				constexpr int BlockSize = 4;
 
 				VoxelizeResource->UpdateRHI(RHICmdList);
 
@@ -347,16 +346,22 @@ public:
 					VoxelMesh.Occupancy.Num() * sizeof(uint32), RLM_WriteOnly));
 				FMemory::Memcpy(OutputGPUBuffer, VoxelMesh.Occupancy.GetData(), VoxelMesh.Occupancy.Num() * sizeof(uint32));
 				RHICmdList.UnlockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer);
+			});
+		FlushRenderingCommands();
 
-				// Copy to Sim
-				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList, 
+		// Copy to Sim
+		ENQUEUE_RENDER_COMMAND(FUpdateVoxelDataCPU)([SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
+			{
+				auto SimDim = FSimulationShaderResource3D::Get()->Params.SimDimensions;
+				constexpr int BlockSize = 4; // Shader block size
+
+				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList,
 					FVoxelGridResource::Get(),
 					FSimulationShaderResource3D::Get()->DebugBuffer.UAV, SimDim,
 					(SimDim.X + BlockSize - 1) / BlockSize,
 					(SimDim.Y + BlockSize - 1) / BlockSize,
 					(SimDim.Z + BlockSize - 1) / BlockSize);
-			});
-
+            });
 		FlushRenderingCommands();
 	}
 

@@ -153,7 +153,7 @@ void FVoxelMesh::VoxelizeMeshInGrid(const AStaticMeshActor* MeshActor, bool Rese
 
     int WrittenVoxels = 0;
     // Voxelize
-    UE_LOG(LogTemp, Warning, TEXT("Voxelizing mesh with %d indices... "), IB.GetNumIndices());
+    UE_LOG(LogVoxelization, Display, TEXT("Voxelizing mesh with %d indices... "), IB.GetNumIndices());
     for (int32 I = 0; I < IB.GetNumIndices(); I += 3)
     {
         FVector3f V0Local = VB.VertexPosition(IB.GetIndex(I + 0));
