@@ -146,5 +146,10 @@ void VOXELIZATION_API DispatchCalculateVertexVelocity_RenderThread(
 
 TArray<ULandscapeComponent*> GetOverlappingLandscapeComponents(ALandscape* LandscapeActor, FBox VoxelGridBounds);
 
+
+#pragma region CPU Voxelization
 void VOXELIZATION_API ClearImmovableMeshVoxelGridBuffer_Host(FVoxelGrid* VoxelGrid);
+
+void VOXELIZATION_API VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& NormalBuffer, const AStaticMeshActor* MeshActor, FVector3f Origin, FIntVector GridDim, float VoxelSize = 1.0f);
+#pragma endregion CPU Voxelization
 

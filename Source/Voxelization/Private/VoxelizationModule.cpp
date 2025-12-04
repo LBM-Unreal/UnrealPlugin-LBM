@@ -1,8 +1,5 @@
 #include "VoxelizationModule.h"
 #include "Modules/ModuleManager.h"
-#include "SimulationCore.h"
-#include "VoxelGridActor.h"
-#include "VoxelizationCore.h"
 
 
 DEFINE_LOG_CATEGORY(LogVoxelization);

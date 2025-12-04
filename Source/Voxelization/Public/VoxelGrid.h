@@ -22,16 +22,44 @@ struct VOXELIZATION_API FVoxelGrid
 
     /** Voxel data of stationary mesh*/
     TArray<uint32> ImmovableMeshOccupancy;
+    TArray<FVector4f> ImmovableMeshOccupancyNormal;
 
     /** Voxel data of movable mesh */
     TArray<uint32> MovableMeshOccupancy;
 
+public:
     FORCEINLINE void SetGridDim(FIntVector InGridDim)
     {
         GridDim = InGridDim;
         auto NewBufferLength = InGridDim.X * InGridDim.Y * InGridDim.Z;
         ImmovableMeshOccupancy.SetNumZeroed(NewBufferLength, EAllowShrinking::Yes);
         MovableMeshOccupancy.SetNumZeroed(NewBufferLength, EAllowShrinking::Yes);
+    }
+
+    /** Convert 3D coordinates to linear index */
+    FORCEINLINE int32 Index(int32 X, int32 Y, int32 Z) const
+    {
+        return X + Y * GridDim.X + Z * GridDim.X * GridDim.Y;
+    }
+
+    /** Get voxel occupancy */
+    FORCEINLINE int32 ReadGridImmovable(int32 X, int32 Y, int32 Z) const
+    {
+        return ImmovableMeshOccupancy[Index(X, Y, Z)];
+    }
+
+    /** Set voxel occupancy */
+    FORCEINLINE void WriteGridImmovable(int32 X, int32 Y, int32 Z, uint32 Value)
+    {
+        ImmovableMeshOccupancy[Index(X, Y, Z)] = Value;
+    }
+
+    FORCEINLINE void ClearGridImmovable()
+    {
+	    for (uint32& VoxelValue : ImmovableMeshOccupancy)
+        {
+            VoxelValue = 0;
+        }
     }
 };
 

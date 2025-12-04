@@ -7,8 +7,6 @@
 #include "SimulationCore.h"
 #include "IRenderDocPlugin.h"
 #include "Engine/Texture2DArray.h"
-#include "VoxelMesh.h"
-#include "VoxelGrid.h"
 #include "VoxelizationCore.h"
 
 #include "SimulationBPModule.generated.h"
@@ -318,22 +316,17 @@ public:
 	}
 
 
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Update VoxelData 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void UpdateVoxelData3D();
-
-
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor"), Category = "LBM Sim")
-	static SIMULATIONBP_API void VoxelizeActor(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin, float VoxelSize) {
+	static SIMULATIONBP_API void VoxelizeActor(AStaticMeshActor* SMActor, FVector3f Origin, FVector3f GridDim, float VoxelSize)
+	{
+		TArray<uint32> VoxelGridBuffer{};
+		TArray<FVector4f> VoxelNormalBuffer{};
+
+		VoxelizeMesh_Host(VoxelGridBuffer, VoxelNormalBuffer, SMActor, Origin, FIntVector(GridDim), VoxelSize);
 
 		FlushRenderingCommands();
-		ENQUEUE_RENDER_COMMAND(FUpdateVoxelDataCPU)([SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(FUpdateVoxelDataCPU)([VoxelGrid=MoveTemp(VoxelGridBuffer), SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
 			{
-				FVoxelMesh VoxelMesh;
-				VoxelMesh.SetGridDim(FIntVector(GridDim));
-				VoxelMesh.SetOrigin(Origin);
-				VoxelMesh.SetVoxelSize(VoxelSize);
-				VoxelMesh.ResetVoxelGrid();
-				VoxelMesh.VoxelizeMeshInGrid(SMActor, false);
 				auto* VoxelizeResource = FVoxelGridResource::Get();
 				VoxelizeResource->GridDim = FIntVector(GridDim);
 				VoxelizeResource->GridOrigin = Origin;
@@ -342,9 +335,9 @@ public:
 				VoxelizeResource->UpdateRHI(RHICmdList);
 
 				// Copy to GPU
-				void* OutputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer, 0, 
-					VoxelMesh.Occupancy.Num() * sizeof(uint32), RLM_WriteOnly));
-				FMemory::Memcpy(OutputGPUBuffer, VoxelMesh.Occupancy.GetData(), VoxelMesh.Occupancy.Num() * sizeof(uint32));
+				void* OutputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer, 0,
+					VoxelGrid.Num() * sizeof(uint32), RLM_WriteOnly));
+				FMemory::Memcpy(OutputGPUBuffer, VoxelGrid.GetData(), VoxelGrid.Num() * sizeof(uint32));
 				RHICmdList.UnlockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer);
 			});
 		FlushRenderingCommands();
@@ -364,6 +357,7 @@ public:
             });
 		FlushRenderingCommands();
 	}
+
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor GPU"), Category = "LBM Sim")
 	static SIMULATIONBP_API void VoxelizeActorGPU(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin)

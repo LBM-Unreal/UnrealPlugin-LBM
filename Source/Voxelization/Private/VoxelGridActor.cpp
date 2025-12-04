@@ -1,10 +1,8 @@
 // Voxelizer.cpp
 #include "VoxelGridActor.h"
-
 #include "VoxelizationModule.h"
 
 #include "VoxelGridVisualizationComponent.h"
-#include "VoxelMesh.h"
 #include "VoxelGrid.h"
 #include "VoxelizationCore.h"
 #include "Engine/StaticMeshActor.h"
@@ -29,19 +27,14 @@ void AVoxelGridActor::FillImmovableVoxelGrid()
 {
 	UE_LOG(LogVoxelization, Display, TEXT("FillImmovableVoxelGrid"));
 	FVoxelGridResource* VoxelGridResource = FVoxelGridResource::Get();
-	FVoxelMesh VoxelMesh;
-	VoxelMesh.SetGridDim(VoxelGrid.GridDim);
-	VoxelMesh.SetOrigin(VoxelGrid.Origin);
-	VoxelMesh.SetVoxelSize(VoxelGrid.VoxelSize);
 
-	VoxelMesh.ResetVoxelGrid();
+	VoxelGrid.ClearGridImmovable();
 
 	for (const auto& meshActor : ImmovableMeshes)
 	{
-		VoxelMesh.VoxelizeMeshInGrid(meshActor, false);
+		VoxelizeMesh_Host(VoxelGrid.ImmovableMeshOccupancy, VoxelGrid.ImmovableMeshOccupancyNormal,
+			meshActor, VoxelGrid.Origin, VoxelGrid.GridDim, VoxelGrid.VoxelSize);
 	}
-
-	VoxelGrid.ImmovableMeshOccupancy = VoxelMesh.Occupancy;
 
 	// Copy to GPU buffer
 	bool ResizeOccupancyBuffer = VoxelGridResource->GridDim != VoxelGrid.GridDim;
