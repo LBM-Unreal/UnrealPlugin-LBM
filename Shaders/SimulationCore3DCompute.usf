@@ -31,6 +31,7 @@ groupshared float f_group[BLOCK_DIM_X * BLOCK_DIM_Y * BLOCK_DIM_Z * Q];
 // 1: solid boundary (with bounce-back behavior)
 // 2: inlet
 // 3: outlet
+// 4: free-slip
 //
 ///////////////
 //
@@ -119,7 +120,7 @@ void StoreBoundaryValues3D(in uint texelX, in uint texelY, in uint texelZ, in fl
 
 float sphere3D(float3 p, float3 center, float radius)
 {
-    return length(p.xy - center.xy) - radius;
+    return length(p.xyz - center.xyz) - radius;
 }
 
 float GetEquilibrium(float3 u, float p, float3 ci, float wi)
@@ -488,41 +489,65 @@ void LoadSharedIndex(in uint localX, in uint localY, in uint localZ, in int inde
 void ReadMomentRepSimulationData3D(in int texelX, in int texelY, in int texelZ, out float rho, out float3 u_, out Moment_ m_, out int boundary)
 {
     uint index = texelX + SimDimension.x * texelY + SimDimension.x * SimDimension.y * texelZ;
-    rho = asfloat(DebugBuffer[0 + 11 * index]);
+    rho = asfloat(DebugBuffer[0 + ELEMENT_DIM * index]);
     
-    u_.x = asfloat(DebugBuffer[1 + 11 * index]);
-    u_.y = asfloat(DebugBuffer[2 + 11 * index]);
-    u_.z = asfloat(DebugBuffer[3 + 11 * index]);
+    u_.x = asfloat(DebugBuffer[1 + ELEMENT_DIM * index]);
+    u_.y = asfloat(DebugBuffer[2 + ELEMENT_DIM * index]);
+    u_.z = asfloat(DebugBuffer[3 + ELEMENT_DIM * index]);
     
-    m_.xx = asfloat(DebugBuffer[4 + 11 * index]);
-    m_.yy = asfloat(DebugBuffer[5 + 11 * index]);
-    m_.zz = asfloat(DebugBuffer[6 + 11 * index]);
-    m_.xy = asfloat(DebugBuffer[7 + 11 * index]);
-    m_.yz = asfloat(DebugBuffer[8 + 11 * index]);
-    m_.zx = asfloat(DebugBuffer[9 + 11 * index]);
+    m_.xx = asfloat(DebugBuffer[4 + ELEMENT_DIM * index]);
+    m_.yy = asfloat(DebugBuffer[5 + ELEMENT_DIM * index]);
+    m_.zz = asfloat(DebugBuffer[6 + ELEMENT_DIM * index]);
+    m_.xy = asfloat(DebugBuffer[7 + ELEMENT_DIM * index]);
+    m_.yz = asfloat(DebugBuffer[8 + ELEMENT_DIM * index]);
+    m_.zx = asfloat(DebugBuffer[9 + ELEMENT_DIM * index]);
     
-    boundary = DebugBuffer[10 + 11 * index];
+    boundary = DebugBuffer[10 + ELEMENT_DIM * index];
 }
 
 void StoreMomentRepSimulationData3D(in int texelX, in int texelY, in int texelZ, in float rho, in float3 u_, in Moment_ m_, in int boundary)
 {
     uint index = texelX + SimDimension.x * texelY + SimDimension.x * SimDimension.y * texelZ;
-    DebugBuffer[0 + 11 * index] = asint(rho);
+    DebugBuffer[0 + ELEMENT_DIM * index] = asint(rho);
     
-    DebugBuffer[1 + 11 * index] = asint(u_.x);
-    DebugBuffer[2 + 11 * index] = asint(u_.y);
-    DebugBuffer[3 + 11 * index] = asint(u_.z);
+    DebugBuffer[1 + ELEMENT_DIM * index] = asint(u_.x);
+    DebugBuffer[2 + ELEMENT_DIM * index] = asint(u_.y);
+    DebugBuffer[3 + ELEMENT_DIM * index] = asint(u_.z);
     
-    DebugBuffer[4 + 11 * index] = asint(m_.xx);
-    DebugBuffer[5 + 11 * index] = asint(m_.yy);
-    DebugBuffer[6 + 11 * index] = asint(m_.zz);
-    DebugBuffer[7 + 11 * index] = asint(m_.xy);
-    DebugBuffer[8 + 11 * index] = asint(m_.yz);
-    DebugBuffer[9 + 11 * index] = asint(m_.zx);
+    DebugBuffer[4 + ELEMENT_DIM * index] = asint(m_.xx);
+    DebugBuffer[5 + ELEMENT_DIM * index] = asint(m_.yy);
+    DebugBuffer[6 + ELEMENT_DIM * index] = asint(m_.zz);
+    DebugBuffer[7 + ELEMENT_DIM * index] = asint(m_.xy);
+    DebugBuffer[8 + ELEMENT_DIM * index] = asint(m_.yz);
+    DebugBuffer[9 + ELEMENT_DIM * index] = asint(m_.zx);
     
-    DebugBuffer[10 + 11 * index] = boundary;
+    DebugBuffer[10 + ELEMENT_DIM * index] = boundary;
 }
-#define INIT_VELO 0.2
+
+void ReadBoundaryInfo3D(in int texelX, in int texelY, in int texelZ, out int boundary, out float3 normal, out float dist)
+{
+    uint index = texelX + SimDimension.x * texelY + SimDimension.x * SimDimension.y * texelZ;
+    boundary = DebugBuffer[10 + ELEMENT_DIM * index];
+    normal.x = asfloat(DebugBuffer[11 + ELEMENT_DIM * index]);
+    normal.y = asfloat(DebugBuffer[12 + ELEMENT_DIM * index]);
+    normal.z = asfloat(DebugBuffer[13 + ELEMENT_DIM * index]);
+    dist = asfloat(DebugBuffer[14 + ELEMENT_DIM * index]);
+}
+
+void StoreBoundaryInfo3D(in int texelX, in int texelY, in int texelZ, in int boundary, in float3 normal, in float dist)
+{
+    uint index = texelX + SimDimension.x * texelY + SimDimension.x * SimDimension.y * texelZ;
+    DebugBuffer[10 + ELEMENT_DIM * index] = boundary;
+    DebugBuffer[11 + ELEMENT_DIM * index] = asint(normal.x);
+    DebugBuffer[12 + ELEMENT_DIM * index] = asint(normal.y);
+    DebugBuffer[13 + ELEMENT_DIM * index] = asint(normal.z);
+    DebugBuffer[14 + ELEMENT_DIM * index] = asint(dist);
+
+}
+
+#define INIT_VELO 0.05
+#define MAX_VELO 0.3
+
 [numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
 void LBM_MR_InitialState3D(
 	uint3 DispatchThreadId : SV_DispatchThreadID,
@@ -544,12 +569,26 @@ void LBM_MR_InitialState3D(
     float rho = 0.3;
     
     int boundary = 0;
+    float3 normal = float3(0., 0., 0.);
     // process all boundary settings
-    if (texelX <= 0 || texelX >= SimDimension.x-1 || 
-        texelY <= 0 || texelY >= SimDimension.y-1 || 
-        texelZ <= 0 || texelZ >= SimDimension.z-1 )
+    if (texelX <= 0 || texelX >= SimDimension.x-5 || 
+        texelY <= 0 || texelY >= SimDimension.y-5 || 
+        texelZ <= 0 || texelZ >= SimDimension.z-5 )
     {
-        boundary = 1; // type 1 lattice
+        boundary = 4;
+        if (texelX <= 0 || texelX >= SimDimension.x - 5)
+        {
+            normal = float3(1., 0., 0.);
+        }
+        if (texelY <= 0 || texelY >= SimDimension.y - 5)
+        {
+            normal = float3(0., 1., 0.);
+        }
+        if (texelZ <= 0 || texelZ >= SimDimension.z - 5)
+        {
+            normal = float3(0., 0., 1.);
+        }
+        StoreBoundaryInfo3D(texelX, texelY, texelZ, boundary, normal, 0.);
     }
     // inside solid boundary
     float3 center = float3(42., 128., 128.);
@@ -557,36 +596,54 @@ void LBM_MR_InitialState3D(
     float d = sphere3D(float3(texelX, texelY, texelZ), center, radius);
     if (d < 0.)
     {
-        boundary = 1;
+        boundary = 4;
+        normal = normalize(float3(texelX, texelY, texelZ) - center);
+        StoreBoundaryInfo3D(texelX, texelY, texelZ, boundary, normal, 0.);
     }
+    
+    /*if (texelX >= center.x - radius && texelX <= center.x+radius &&
+        texelY >= center.y - radius && texelY <= center.y + radius &&
+        texelZ >= center.z - radius && texelZ <= center.z + radius)
+    {
+        boundary = 4;
+        normal = float3(0.,0.,0.);
+        if (texelX == center.x - radius || texelX == center.x + radius)
+        {
+            normal = float3(1., 0., 0.);
+        }
+        else if (texelY == center.y - radius || texelY == center.y + radius)
+        {
+            normal = float3(0., 1., 0.);
+        }
+        else if (texelZ == center.z - radius || texelZ == center.z + radius)
+        {
+            normal = float3(0., 0., 1.);
+        }
+        StoreBoundaryInfo3D(texelX, texelY, texelZ, boundary, normal, 0.);
+    }*/
+    
     if (texelX == 0)
     {
         boundary = 2; // type 2 lattice with fixed velocity
-        u = float3(INIT_VELO, 0.0, 0.0);
-        rho = 0.3;
-
+        u = float3(0.0, 0.0, 0.0);
+        rho = 0.35 * (128 - abs(texelY - 128)) * (128 - abs(texelZ - 128));
     }
-    if (texelX == SimDimension.x - 1 && 
-        texelY > 0 && texelY < SimDimension.y - 1 &&
-        texelZ > 0 && texelZ < SimDimension.z - 1)
+    if (texelX == SimDimension.x - 5 && // right boundary as outflow
+        texelY > 0 && texelY < SimDimension.y - 4 &&
+        texelZ > 0 && texelZ < SimDimension.z - 4)
     {
         boundary = 3;
     }
-    float fluidFraction = 0.0;
-    if (texelX < 128)
-    {
-        fluidFraction = 1.0;
-    }
-    if (texelX == 128)
-    {
-        fluidFraction = 0.5;
-    }
     //StoreMomentRepSimulationData2D(texelX, texelY, rho, u, float3(0., 0., 0.), boundary);
     StoreMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u, (Moment_)0, boundary);
-    DebugTexture3D[uint3(texelX, texelY, texelZ)].x = length(u);
+    DebugTexture3D[uint3(texelX, texelY, texelZ)].x = 0.;
     DebugTexture3D[uint3(texelX, texelY, texelZ)].y = 0.;
-    DebugTexture3D[uint3(texelX, texelY, texelZ)].z = rho;
-	}
+    DebugTexture3D[uint3(texelX, texelY, texelZ)].z = 0.;
+    if (texelZ == DEBUG_TEXTURE_SLICE)
+    {
+        StoreDebugTexture2D(texelX, texelY, float4(0., 0., 0., 1.));
+    }
+}
 
 [numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
 void LBM_MR_Streaming_Collision3D(
@@ -595,14 +652,6 @@ void LBM_MR_Streaming_Collision3D(
 	uint GroupIndex : SV_GroupIndex,
 	uint3 GroupID : SV_GroupID)
 {
-    /*
-    
-    1 2 3 
-    4 0 5
-    6 7 8
-    
-    */
-
     uint texelX = DispatchThreadId.x + 1;
     uint texelY = DispatchThreadId.y + 1; 
     uint texelZ = DispatchThreadId.z + 1; // skip the outer boundary
@@ -886,6 +935,40 @@ float HOME_ReconstructFi_3D(
     return rho * wi * poly;
 }
 
+void ApplySpecularOnMoment(Moment_ m, float rho, float3 u, float3 n, out float3 u_out, out Moment_ m_out)
+{
+    // 保证 n 是单位向量
+    n = normalize(n);
+
+    // -------- 1. 速度向量做镜面反射 --------
+    // u' = u - 2 (u·n) n
+    float dotUN = dot(u, n);
+    float3 u_reflected = u - 2.0 * dotUN * n;
+
+    // -------- 2. 构造反射矩阵 R = I - 2 n n^T --------
+    float3x3 R =
+    {
+        1 - 2 * n.x * n.x, -2 * n.x * n.y, -2 * n.x * n.z,
+        -2 * n.y * n.x, 1 - 2 * n.y * n.y, -2 * n.y * n.z,
+        -2 * n.z * n.x, -2 * n.z * n.y, 1 - 2 * n.z * n.z
+    };
+
+    // -------- 3. 二阶矩做镜面反射 --------
+    // Π' = R Π R^T
+    float3x3 Pi = { m.xx, m.xy, m.zx, m.xy, m.yy, m.yz, m.zx, m.yz, m.zz };
+    float3x3 Pi_reflected = mul(R, mul(Pi, transpose(R)));
+
+    // -------- 4. 以上处理只作用于速度与二阶矩，密度保持不变 --------
+    Moment_ outM = m;
+    u_out = u_reflected;
+    m_out.xx = Pi_reflected[0][0];
+    m_out.xy = Pi_reflected[0][1];
+    m_out.zx = Pi_reflected[0][2];
+    m_out.yy = Pi_reflected[1][1];
+    m_out.yz = Pi_reflected[1][2];
+    m_out.zz = Pi_reflected[2][2];
+}
+
 [numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
 void LBM_HOME_Streaming_Collision3D(
 	uint3 DispatchThreadId : SV_DispatchThreadID,
@@ -893,14 +976,6 @@ void LBM_HOME_Streaming_Collision3D(
 	uint GroupIndex : SV_GroupIndex,
 	uint3 GroupID : SV_GroupID)
 {
-    /*
-    
-    1 2 3 
-    4 0 5
-    6 7 8
-    
-    */
-
     uint texelX = DispatchThreadId.x + 1;
     uint texelY = DispatchThreadId.y + 1;
     uint texelZ = DispatchThreadId.z + 1; // skip the outer boundary
@@ -909,10 +984,6 @@ void LBM_HOME_Streaming_Collision3D(
     const uint block_z_dim = BLOCK_DIM_Z;
     if (texelX >= SimDimension.x - 1 || texelY >= SimDimension.y - 1 || texelZ >= SimDimension.z - 1)
     {
-        if (texelZ == DEBUG_TEXTURE_SLICE)
-        {
-            StoreDebugTexture2D(texelX, texelY, float4(0., 1., 0., 0));
-        }
         return;
     }
     // LBM constants
@@ -983,9 +1054,19 @@ void LBM_HOME_Streaming_Collision3D(
     {
         offset = int3(1 - 2 * int(tid.x == 0), 1 - 2 * int(tid.y == 0), 1 - 2 * int(tid.z == 0));
         ReadMomentRepSimulationData3D(texelX + offset.x, texelY + offset.y, texelZ + offset.z, rho, u_, m_, boundary2);
-        for (int i = 0; i < 19; i++)
+        if (boundary2 > 0)
         {
-            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = -boundary2;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            }
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
@@ -997,9 +1078,19 @@ void LBM_HOME_Streaming_Collision3D(
     {
         offset = int3(1 - 2 * int(tid.x == 0), 1 - 2 * int(tid.y == 0), 0);
         ReadMomentRepSimulationData3D(texelX + offset.x, texelY + offset.y, texelZ + offset.z, rho, u_, m_, boundary2);
-        for (int i = 0; i < 19; i++)
+        if (boundary2 > 0)
         {
-            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = -boundary2;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            }
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
@@ -1008,9 +1099,19 @@ void LBM_HOME_Streaming_Collision3D(
     {
         offset = int3(1 - 2 * int(tid.x == 0), 0, 1 - 2 * int(tid.z == 0));
         ReadMomentRepSimulationData3D(texelX + offset.x, texelY + offset.y, texelZ + offset.z, rho, u_, m_, boundary2);
-        for (int i = 0; i < 19; i++)
+        if (boundary2 > 0)
         {
-            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = -boundary2;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            }
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
@@ -1019,9 +1120,19 @@ void LBM_HOME_Streaming_Collision3D(
     {
         offset = int3(0, 1 - 2 * int(tid.y == 0), 1 - 2 * int(tid.z == 0));
         ReadMomentRepSimulationData3D(texelX + offset.x, texelY + offset.y, texelZ + offset.z, rho, u_, m_, boundary2);
-        for (int i = 0; i < 19; i++)
+        if (boundary2 > 0)
         {
-            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = -boundary2;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            }
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
@@ -1032,9 +1143,19 @@ void LBM_HOME_Streaming_Collision3D(
     {
         offset = int3(1 - 2 * int(tid.x == 0), 0, 0);
         ReadMomentRepSimulationData3D(texelX + offset.x, texelY + offset.y, texelZ + offset.z, rho, u_, m_, boundary2);
-        for (int i = 0; i < 19; i++)
+        if (boundary2 > 0)
         {
-            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = -boundary2;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            }
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
@@ -1042,9 +1163,19 @@ void LBM_HOME_Streaming_Collision3D(
     {
         offset = int3(0, 1 - 2 * int(tid.y == 0), 0);
         ReadMomentRepSimulationData3D(texelX + offset.x, texelY + offset.y, texelZ + offset.z, rho, u_, m_, boundary2);
-        for (int i = 0; i < 19; i++)
+        if (boundary2 > 0)
         {
-            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = -boundary2;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            }
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
@@ -1052,9 +1183,19 @@ void LBM_HOME_Streaming_Collision3D(
     {
         offset = int3(0, 0, 1 - 2 * int(tid.z == 0));
         ReadMomentRepSimulationData3D(texelX + offset.x, texelY + offset.y, texelZ + offset.z, rho, u_, m_, boundary2);
-        for (int i = 0; i < 19; i++)
+        if (boundary2 > 0)
         {
-            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = -boundary2;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 19; i++)
+            {
+                f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+            }
         }
         StoreShared(tid.x + offset.x + 1, tid.y + offset.y + 1, tid.z + offset.z + 1, f);
     }
@@ -1063,25 +1204,75 @@ void LBM_HOME_Streaming_Collision3D(
     int boundary;
     // inner cell - only the center
     ReadMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u_, m_, boundary);
-    for (int i = 0; i < 19; i++)
+    if (boundary > 0)
     {
-        f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+        for (int i = 0; i < 19; i++)
+        {
+            f[i] = -boundary;
+        }
+    }
+    else
+    {
+        for (int i = 0; i < 19; i++)
+        {
+            f[i] = HOME_ReconstructFi_3D(rho, u_, m_, c[i], w[i]);
+        }
     }
     StoreShared(tid.x + 1, tid.y + 1, tid.z + 1, f);
     AllMemoryBarrierWithGroupSync();
     
     
-    // STAGE 2 -- stream the group shared data and convert back to moments
-    for (int i = 0; i < 19; i++)
-    {
-        int3 c_i = int3((int) c[i].x, (int) c[i].y, (int) c[i].z);
-        LoadSharedIndex(tid.x + 1 - c_i.x, tid.y + 1 - c_i.y, tid.z + 1 - c_i.z, i, f[i]);
-    }
-    
-    // STAGE 3 -- collide and write back the moments to global memory
-    // compute moments from distribution functions
     if (boundary == 0)
     {
+        // STAGE 2 -- stream the group shared data and convert back to moments
+        for (int i = 0; i < 19; i++)
+        {
+            int3 c_i = int3((int) c[i].x, (int) c[i].y, (int) c[i].z);
+            LoadSharedIndex(tid.x + 1 - c_i.x, tid.y + 1 - c_i.y, tid.z + 1 - c_i.z, i, f[i]);
+            if (f[i] < 0.) // neighbor is boundary
+            {
+            // boundary
+                int boundary = -f[i];
+            
+                Moment_ m_boundary;
+                // use rho for boundary, calculate u
+                float3 u_boundary = float3(0., 0., 0.);
+                if (boundary == 1)
+                {
+                    m_boundary = m_;
+                }
+                if (boundary == 2)
+                {
+                    u_boundary = float3(INIT_VELO, 0., 0.);
+                    m_boundary.xx = u_boundary.x * u_boundary.x + (m_.xx - u_.x * u_.x);
+                    m_boundary.xy = u_boundary.x * u_boundary.y + (m_.xy - u_.x * u_.y);
+                    m_boundary.zx = u_boundary.x * u_boundary.z + (m_.zx - u_.x * u_.z);
+                    m_boundary.yy = u_boundary.y * u_boundary.y + (m_.yy - u_.y * u_.y);
+                    m_boundary.yz = u_boundary.y * u_boundary.z + (m_.yz - u_.y * u_.z);
+                    m_boundary.zz = u_boundary.z * u_boundary.z + (m_.zz - u_.z * u_.z);
+                }
+                if (boundary == 3) // outlet or do-nothing boundary
+                {
+                    u_boundary = u_;
+                    m_boundary = m_;
+                }
+                else if (boundary == 4) // free-slip
+                {
+                    float3 normal = normalize(c[i]);
+                    float dist;
+                    int _;
+                    ReadBoundaryInfo3D(texelX - c_i.x, texelY - c_i.y, texelZ - c_i.z, _, normal, dist);
+                    //float fluid_solid_drag = pow(length(u_), 2.);
+                    //u_boundary = u_ - normalize(normal) * dot(normal, u_); // use normal to do free slip
+                    ApplySpecularOnMoment(m_, rho, u_, normal, u_boundary, m_boundary);
+                }
+                f[i] = HOME_ReconstructFi_3D(rho, u_boundary, m_boundary, c[i], w[i]);
+            }
+        }
+    
+    
+        // STAGE 3 -- collide and write back the moments to global memory
+        // compute moments from distribution functions
         // reconstruct
         rho = 0.;  // rho = rho_star
         float3 u_star = float3(0., 0., 0.);
@@ -1107,7 +1298,7 @@ void LBM_HOME_Streaming_Collision3D(
     
         // collide using moments
         float3 F = float3(0., 0., 0.);
-        const float tau = 0.505;
+        const float tau = RelaxationFactor;
         
         u_ = u_star + 0.5 * F / rho;
         
@@ -1142,11 +1333,6 @@ void LBM_HOME_Streaming_Collision3D(
             1.0 / tau * (u_star.z * u_star.x) +
             (2.0 * tau - 1.0) / (2.0 * tau * rho) * (F.x * u_star.z + F.z * u_star.x);
     }
-    if (boundary == 2)
-    {
-        u_ = float3(INIT_VELO, 0.0, 0.0);
-        rho = 0.3;
-    }
     if (boundary == 3)
     {
         int b;
@@ -1163,6 +1349,6 @@ void LBM_HOME_Streaming_Collision3D(
     }
     DebugTexture3D[uint3(texelX, texelY, texelZ)] = float4(u_, rho);
     if (texelZ == DEBUG_TEXTURE_SLICE) {
-        StoreDebugTexture2D(texelX, texelY, float4(length(u_), g, rho, 0));
+        StoreDebugTexture2D(texelX, texelY, float4(length(u_) / 2./ INIT_VELO, boundary, rho, 1));
     }
 }
