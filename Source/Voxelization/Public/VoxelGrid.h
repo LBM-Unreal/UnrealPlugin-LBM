@@ -22,7 +22,8 @@ struct VOXELIZATION_API FVoxelGrid
 
     /** Voxel data of stationary mesh*/
     TArray<uint32> ImmovableMeshOccupancy;
-    TArray<FVector4f> ImmovableMeshOccupancyNormal;
+    TArray<FVector4f> ImmovableMeshNormal;
+    TArray<FVector3f> ImmovableMeshVelocity;
 
     /** Voxel data of movable mesh */
     TArray<uint32> MovableMeshOccupancy;
@@ -56,10 +57,16 @@ public:
 
     FORCEINLINE void ClearGridImmovable()
     {
-	    for (uint32& VoxelValue : ImmovableMeshOccupancy)
+	    for (int32 Idx = 0; Idx < ImmovableMeshOccupancy.Num(); Idx++)
         {
-            VoxelValue = 0;
+            ImmovableMeshOccupancy[Idx] = 0;
+            ImmovableMeshNormal[Idx] = FVector4f(0);
         }
+    }
+
+    FORCEINLINE int32 GetBuffLength() const
+    {
+        return GridDim.X * GridDim.Y * GridDim.Z;
     }
 };
 
@@ -70,6 +77,9 @@ class VOXELIZATION_API FVoxelGridResource : public FRenderResource
 public:
     // Render Resources
     FRWBufferStructured ImmovableMeshOccupancyBuffer;
+    FRWBufferStructured ImmovableMeshNormalBuffer;
+    FRWBufferStructured ImmovableMeshVelocityBuffer;
+
     FRWBufferStructured MovableMeshOccupancyBuffer;
     FRWBufferStructured GridVelocityBuffer;
 

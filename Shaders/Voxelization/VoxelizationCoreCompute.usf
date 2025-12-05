@@ -308,35 +308,3 @@ void VoxelizeMesh(uint DTid : SV_DispatchThreadID)
 #endif
     
 }
-
-
-/* ----------------- Copy Kernel ------------------------------------------------------------------------------------------------------*/ 
-#define ELEMENT_DIM 11
-
-RWStructuredBuffer<uint> CpySrcVoxelGridBuffer; 
-RWStructuredBuffer<int> CpyDstDebugBuffer;
-
-int3 SimDimension;
-int3 VoxelGridDimension;
-
-uint GetCpyDstIdx(in uint texelX, in uint texelY, in uint texelZ)
-{
-    return ELEMENT_DIM - 1 + ELEMENT_DIM * texelX + ELEMENT_DIM * SimDimension.x * texelY + ELEMENT_DIM * SimDimension.x * SimDimension.y * texelZ;
-}
-
-
-[numthreads(4, 4, 4)]
-void CpyVoxelGridToSimulation(uint3 DTid : SV_DispatchThreadID)
-{
-    if (any(DTid >= VoxelGridDimension) || 
-            any(DTid < 1) || any(DTid >= SimDimension - 1)) // prevent overwriting simulation boundary
-    {
-	    return;
-    }
-
-    uint srcIdx = DTid.x + DTid.y * VoxelGridDimension.x + DTid.z * VoxelGridDimension.x * VoxelGridDimension.y;
-    uint dstIdx = GetCpyDstIdx(DTid.x, DTid.y, DTid.z);
-
-
-	CpyDstDebugBuffer[dstIdx] = CpySrcVoxelGridBuffer[srcIdx];
-}

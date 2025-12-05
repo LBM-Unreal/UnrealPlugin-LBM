@@ -321,34 +321,59 @@ public:
 	{
 		TArray<uint32> VoxelGridBuffer{};
 		TArray<FVector4f> VoxelNormalBuffer{};
+		TArray<FVector3f> VoxelVelocityBuffer{};
+		VoxelizeMesh_Host(VoxelGridBuffer, VoxelNormalBuffer, VoxelVelocityBuffer, SMActor, Origin, FIntVector(GridDim), VoxelSize);
 
-		VoxelizeMesh_Host(VoxelGridBuffer, VoxelNormalBuffer, SMActor, Origin, FIntVector(GridDim), VoxelSize);
 
+		auto* VoxelGridResource = FVoxelGridResource::Get();
+		auto RequiredBufferElementCount = GridDim.X * GridDim.Y * GridDim.Z;
+		bool UpdateRHI = VoxelGridResource->GetBufferLength() != RequiredBufferElementCount;
+
+		VoxelGridResource->GridDim = FIntVector(GridDim);
+		VoxelGridResource->GridOrigin = Origin;
+		// Update RHI if needed more space
+		if (UpdateRHI)
+		{
+			FlushRenderingCommands();
+			ENQUEUE_RENDER_COMMAND(UpdateVoxelGridResourceRHI)([&](FRHICommandListImmediate& RHICmdList)
+				{
+					VoxelGridResource->UpdateRHI(RHICmdList);
+				});
+		}
 		FlushRenderingCommands();
-		ENQUEUE_RENDER_COMMAND(FUpdateVoxelDataCPU)([VoxelGrid=MoveTemp(VoxelGridBuffer), SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
+
+		// Upload voxel data to GPU
+		ENQUEUE_RENDER_COMMAND(CopyVoxelGridToGPU)([VoxelGridResource, RequiredBufferElementCount, 
+				VoxelGridBuffer = MoveTemp(VoxelGridBuffer), 
+				VoxelNormalBuffer = MoveTemp(VoxelNormalBuffer),
+				VoxelVelocityBuffer = MoveTemp(VoxelVelocityBuffer)](FRHICommandListImmediate& RHICmdList)
 			{
-				auto* VoxelizeResource = FVoxelGridResource::Get();
-				VoxelizeResource->GridDim = FIntVector(GridDim);
-				VoxelizeResource->GridOrigin = Origin;
-				auto SimDim = FSimulationShaderResource3D::Get()->Params.SimDimensions;
+				// Upload Occupancy
+				void* OutputGPUBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, RequiredBufferElementCount * sizeof(uint32), RLM_WriteOnly);
+				FMemory::Memcpy(OutputGPUBuffer, VoxelGridBuffer.GetData(), RequiredBufferElementCount * sizeof(uint32));
+				RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer);
 
-				VoxelizeResource->UpdateRHI(RHICmdList);
+				// Upload Normal
+				OutputGPUBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshNormalBuffer.Buffer, 0, RequiredBufferElementCount * sizeof(FVector4f), RLM_WriteOnly);
+				FMemory::Memcpy(OutputGPUBuffer, VoxelNormalBuffer.GetData(), RequiredBufferElementCount * sizeof(FVector4f));
+				RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshNormalBuffer.Buffer);
 
-				// Copy to GPU
-				void* OutputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer, 0,
-					VoxelGrid.Num() * sizeof(uint32), RLM_WriteOnly));
-				FMemory::Memcpy(OutputGPUBuffer, VoxelGrid.GetData(), VoxelGrid.Num() * sizeof(uint32));
-				RHICmdList.UnlockBuffer(VoxelizeResource->ImmovableMeshOccupancyBuffer.Buffer);
+				// Upload Velocity
+				OutputGPUBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshVelocityBuffer.Buffer, 0, RequiredBufferElementCount * sizeof(FVector3f), RLM_WriteOnly);
+				FMemory::Memcpy(OutputGPUBuffer, VoxelVelocityBuffer.GetData(), RequiredBufferElementCount * sizeof(FVector3f));
+				RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshVelocityBuffer.Buffer);
+				
 			});
 		FlushRenderingCommands();
 
 		// Copy to Sim
-		ENQUEUE_RENDER_COMMAND(FUpdateVoxelDataCPU)([SMActor, GridDim, Origin, VoxelSize](FRHICommandListImmediate& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(CopyVoxelGridToSimulation)([](FRHICommandListImmediate& RHICmdList)
 			{
+			// TODO: add normal and velocity
 				auto SimDim = FSimulationShaderResource3D::Get()->Params.SimDimensions;
 				constexpr int BlockSize = 4; // Shader block size
 
-				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList,
+				DispatchCopyImmovableMeshVoxelGridToSim_RenderThread(RHICmdList,
 					FVoxelGridResource::Get(),
 					FSimulationShaderResource3D::Get()->DebugBuffer.UAV, SimDim,
 					(SimDim.X + BlockSize - 1) / BlockSize,
@@ -396,7 +421,7 @@ public:
 				auto SimDim = SimResource->Params.SimDimensions;
 				constexpr int BlockSize = 4;
 				// Copy to Simulation Buffer
-				DispatchCopyVoxelGridToSim_RenderThread(RHICmdList,
+				DispatchCopyImmovableMeshVoxelGridToSim_RenderThread(RHICmdList,
 					VoxelGridResource,
 					SimResource->DebugBuffer.UAV, SimDim,
 					(SimDim.X + BlockSize - 1) / BlockSize,

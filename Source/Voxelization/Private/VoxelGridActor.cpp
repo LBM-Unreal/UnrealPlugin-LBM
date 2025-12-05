@@ -32,35 +32,39 @@ void AVoxelGridActor::FillImmovableVoxelGrid()
 
 	for (const auto& meshActor : ImmovableMeshes)
 	{
-		VoxelizeMesh_Host(VoxelGrid.ImmovableMeshOccupancy, VoxelGrid.ImmovableMeshOccupancyNormal,
+		VoxelizeMesh_Host(VoxelGrid.ImmovableMeshOccupancy, VoxelGrid.ImmovableMeshNormal, VoxelGrid.ImmovableMeshVelocity, 
 			meshActor, VoxelGrid.Origin, VoxelGrid.GridDim, VoxelGrid.VoxelSize);
 	}
 
 	// Copy to GPU buffer
-	bool ResizeOccupancyBuffer = VoxelGridResource->GridDim != VoxelGrid.GridDim;
-    VoxelGridResource->GridDim = VoxelGrid.GridDim;
+	UE_LOG(LogVoxelization, Display, TEXT("FillImmovableVoxelGrid: Copy to GPU"));
 
-	auto BufferSize = VoxelGrid.ImmovableMeshOccupancy.Num();
 	const auto* Occupancy = VoxelGrid.ImmovableMeshOccupancy.GetData();
 
+	bool ResizeOccupancyBuffer = VoxelGridResource->GetBufferLength() != VoxelGrid.GetBuffLength();
+    VoxelGridResource->GridDim = VoxelGrid.GridDim;
+	VoxelGridResource->GridOrigin = VoxelGrid.Origin;
+    auto BufferSize = VoxelGrid.GetBuffLength();
+
+	if (ResizeOccupancyBuffer)
+	{
+		FlushRenderingCommands();
+			ENQUEUE_RENDER_COMMAND(CopyBufferToGPU)([&](FRHICommandListImmediate& RHICmdList)
+			{
+				VoxelGridResource->UpdateRHI(RHICmdList);
+			});
+	}
 	FlushRenderingCommands();
 		ENQUEUE_RENDER_COMMAND(CopyBufferToGPU)([&](FRHICommandListImmediate& RHICmdList)
 		{
-			if (ResizeOccupancyBuffer)
-			{
-				VoxelGridResource->ImmovableMeshOccupancyBuffer.Release();
-				VoxelGridResource->GridVelocityBuffer.Release();
-				VoxelGridResource->ImmovableMeshOccupancyBuffer.Initialize(RHICmdList, TEXT("VoxelBuffer"), sizeof(uint32), BufferSize);
-				VoxelGridResource->GridVelocityBuffer.Initialize(RHICmdList, TEXT("GridVelocityBuffer"), sizeof(FVector3f), BufferSize);
-				VoxelGridResource->GridDim = VoxelGrid.GridDim;
-			}
-			void* OutputGPUBuffer = static_cast<float*>(RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferSize * sizeof(uint32), RLM_WriteOnly));
+			void* OutputGPUBuffer = RHICmdList.LockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer, 0, BufferSize * sizeof(uint32), RLM_WriteOnly);
 			FMemory::Memcpy(OutputGPUBuffer, Occupancy, BufferSize * sizeof(uint32));
-
-			// UnlockBuffer
 			RHICmdList.UnlockBuffer(VoxelGridResource->ImmovableMeshOccupancyBuffer.Buffer);
 		});
 	FlushRenderingCommands();
+
+	// UnlockBuffer
+	UE_LOG(LogVoxelization, Display, TEXT("FillImmovableVoxelGrid: Copy to GPU finished."));
 }
 
 void AVoxelGridActor::FillImmovableVoxelGridGPU()

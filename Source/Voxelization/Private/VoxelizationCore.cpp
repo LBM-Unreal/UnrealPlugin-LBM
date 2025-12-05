@@ -5,16 +5,85 @@
 #include "VoxelizationModule.h"
 #include "Engine/StaticMeshActor.h"
 
-
 #pragma region Shaders
 /* ---------------------------------------- Shaders ---------------------------------------------------- */
 // FVoxelizationCS
+BEGIN_SHADER_PARAMETER_STRUCT(FVoxelizationShaderParameters, )
+    // Buffers
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<uint32>, VoxelGridBuffer)
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<FVector3f>, GridVelocityBuffer)
+    SHADER_PARAMETER_SRV(StructuredBuffer<float>, TriangleVerts)
+    SHADER_PARAMETER_SRV(StructuredBuffer<uint32>, TriangleIndices)
+    SHADER_PARAMETER_SRV(StructuredBuffer<FVector3f>, VertexVelocitiesWorldSpace)
+
+    // Params
+    SHADER_PARAMETER(FVector3f, GridMin)
+    SHADER_PARAMETER(FIntVector, GridDim)
+    SHADER_PARAMETER(FMatrix44f, LocalToWorld)
+    SHADER_PARAMETER(uint32, TriangleCount)
+    SHADER_PARAMETER(uint32, VertexCount)
+    SHADER_PARAMETER(uint32, IndexCount)
+END_SHADER_PARAMETER_STRUCT()
+
+class FVoxelizationCS : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FVoxelizationCS, Global)
+    SHADER_USE_PARAMETER_STRUCT(FVoxelizationCS, FGlobalShader)
+
+        using FParameters = FVoxelizationShaderParameters;
+};
 IMPLEMENT_SHADER_TYPE(, FVoxelizationCS, TEXT("/VoxelizationShaderDir/VoxelizationCoreCompute.usf"), TEXT("VoxelizeMesh"), SF_Compute);
+
+
 // FCopyVoxelGridToSimCS
-IMPLEMENT_SHADER_TYPE(, FCopyVoxelGridToSimCS, TEXT("/VoxelizationShaderDir/VoxelizationCoreCompute.usf"), TEXT("CpyVoxelGridToSimulation"), SF_Compute);
+BEGIN_SHADER_PARAMETER_STRUCT(FCopyVoxelGridToSimParameters, )
+    // Buffers
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<uint32>, CpySrcVoxelGridBuffer)
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<int>, CpyDstDebugBuffer)
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<FVector4f>, CpySrcVoxelNormalBuffer)
+	SHADER_PARAMETER_UAV(RWStructuredBuffer<FVector3f>, CpySrcVoxelVelocityBuffer)
+
+    // Params
+    SHADER_PARAMETER(FIntVector3, SimDimension)
+    SHADER_PARAMETER(FIntVector3, VoxelGridDimension)
+END_SHADER_PARAMETER_STRUCT()
+
+class FCopyVoxelGridToSimCS : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FCopyVoxelGridToSimCS, Global)
+    SHADER_USE_PARAMETER_STRUCT(FCopyVoxelGridToSimCS, FGlobalShader)
+
+        using FParameters = FCopyVoxelGridToSimParameters;
+};
+IMPLEMENT_SHADER_TYPE(, FCopyVoxelGridToSimCS, TEXT("/VoxelizationShaderDir/UtilitiesCompute.usf"), TEXT("CpyVoxelGridToSimulation"), SF_Compute);
+
+
 // FVertexVelocityCS
+BEGIN_SHADER_PARAMETER_STRUCT(FVertexVelocityShaderParameters, )
+    // Buffers
+    SHADER_PARAMETER_SRV(StructuredBuffer<float>, TriangleVerts)
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<FVector3f>, VertexPositionsWorldSpace)
+    SHADER_PARAMETER_UAV(RWStructuredBuffer<FVector3f>, VertexVelocitiesWorldSpace)
+
+    // Params
+    SHADER_PARAMETER(FMatrix44f, LocalToWorld)
+    SHADER_PARAMETER(uint32, VertexCount)
+    SHADER_PARAMETER(float, DeltaTime)
+END_SHADER_PARAMETER_STRUCT()
+
+class FVertexVelocityCS : public FGlobalShader
+{
+    DECLARE_SHADER_TYPE(FVertexVelocityCS, Global)
+    SHADER_USE_PARAMETER_STRUCT(FVertexVelocityCS, FGlobalShader)
+
+        using FParameters = FVertexVelocityShaderParameters;
+
+    static constexpr uint32 BlockSize = 64;
+};
 IMPLEMENT_SHADER_TYPE(, FVertexVelocityCS, TEXT("/VoxelizationShaderDir/VertexVelocityCompute.usf"), TEXT("CalculateVertexVelocity"), SF_Compute);
+
 #pragma endregion Shaders
+
 
 #pragma region Resource
 /* ---------------------------------------- Resources ---------------------------------------------------- */
@@ -146,7 +215,7 @@ bool TriangleAABBTest(FVector3f V0, FVector3f V1, FVector3f V2, FVector3f BoxCen
 
 
 /* ---------------------------------------- Exposed Functions ---------------------------------------------------- */
-void DispatchCopyVoxelGridToSim_RenderThread(
+void DispatchCopyImmovableMeshVoxelGridToSim_RenderThread(
     FRHICommandList& RHICmdList,
     FVoxelGridResource* VoxelGridResource,
     FUnorderedAccessViewRHIRef DstUAV,
@@ -155,7 +224,7 @@ void DispatchCopyVoxelGridToSim_RenderThread(
 {
     if (VoxelGridResource->GridDim != SimDimension)
     {
-        UE_LOG(LogVoxelization, Warning, TEXT("DispatchCopyVoxelGridToSim_RenderThread: mismatched dimension: VoxelGrid[%d, %d, %d], SimulationBuffer[%d, %d, %d]"), 
+        UE_LOG(LogVoxelization, Warning, TEXT("DispatchCopyImmovableMeshVoxelGridToSim_RenderThread: mismatched dimension: VoxelGrid[%d, %d, %d], SimulationBuffer[%d, %d, %d]"), 
             VoxelGridResource->GridDim.X, VoxelGridResource->GridDim.Y, VoxelGridResource->GridDim.Z, 
             SimDimension.X, SimDimension.Y, SimDimension.Z)
     }
@@ -167,6 +236,8 @@ void DispatchCopyVoxelGridToSim_RenderThread(
         typename FCopyVoxelGridToSimCS::FParameters Parameters{};
 
         Parameters.CpySrcVoxelGridBuffer = VoxelGridResource->ImmovableMeshOccupancyBuffer.UAV;
+        Parameters.CpySrcVoxelNormalBuffer = VoxelGridResource->ImmovableMeshNormalBuffer.UAV;
+        Parameters.CpySrcVoxelVelocityBuffer = VoxelGridResource->ImmovableMeshVelocityBuffer.UAV;
         Parameters.CpyDstDebugBuffer = DstUAV;
         Parameters.SimDimension = SimDimension;
         Parameters.VoxelGridDimension = VoxelGridResource->GridDim;
@@ -380,22 +451,9 @@ TArray<ULandscapeComponent*> GetOverlappingLandscapeComponents(ALandscape* Lands
     return OverlappingLandscapeComponents;
 }
 
-void ClearImmovableMeshVoxelGridBuffer_Host(FVoxelGrid* VoxelGrid)
-{
-    if (!VoxelGrid)
-    {
-        UE_LOG(LogVoxelization, Warning, TEXT("ClearImmovableMeshVoxelGridBuffer_Host: VoxelGrid is null"));
-		return;    
-    }
 
-	for (uint32& VoxelValue : VoxelGrid->ImmovableMeshOccupancy)
-    {
-        VoxelValue = 0;
-    }
-}
-
-void VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& NormalBuffer,
-    const AStaticMeshActor* MeshActor, FVector3f Origin, FIntVector GridDim, float VoxelSize)
+void VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& VoxelGridNormalBuffer, TArray<FVector3f>& VoxelGridVelocityBuffer, 
+    const AStaticMeshActor* MeshActor, FVector3f Origin, FIntVector GridDim, float VoxelSize, FVector3f ConstantVelocity)
 {
     // Validation and setup
     if (!MeshActor || !MeshActor->GetStaticMeshComponent())
@@ -424,10 +482,14 @@ void VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& Norma
         return;
     }
 
-    if (VoxelGridBuffer.Num() != GridDim.X * GridDim.Y * GridDim.Z)
+	const int32 BufferLength = GridDim.X * GridDim.Y * GridDim.Z;
+    if (VoxelGridBuffer.Num() != BufferLength || VoxelGridNormalBuffer.Num() != BufferLength || VoxelGridVelocityBuffer.Num() != BufferLength)
     {
-        UE_LOG(LogVoxelization, Warning, TEXT("VoxelizeMesh_Host: Buffer size mismatch got %d."), GridDim.X * GridDim.Y * GridDim.Z);
-        VoxelGridBuffer.SetNum(GridDim.X * GridDim.Y * GridDim.Z);
+        UE_LOG(LogVoxelization, Warning, TEXT("VoxelizeMesh_Host: Buffer size mismatch. Expected %d, got VoxelBuffer[%d], NormalBuffer[%d], VelocityBuffer[%d]"), 
+            BufferLength, VoxelGridBuffer.Num(), VoxelGridNormalBuffer.Num(), VoxelGridVelocityBuffer.Num());
+        VoxelGridBuffer.SetNum(BufferLength);
+        VoxelGridNormalBuffer.SetNum(BufferLength);
+        VoxelGridVelocityBuffer.SetNum(BufferLength);
     }
 
     // Extract raw positions
@@ -454,6 +516,9 @@ void VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& Norma
         FVector3f V0VoxelSpace = (V0World - Origin) / VoxelSize;
         FVector3f V1VoxelSpace = (V1World - Origin) / VoxelSize;
         FVector3f V2VoxelSpace = (V2World - Origin) / VoxelSize;
+
+        // Calculate triangel normal for voxel normal buffer (use clockwise order for UE's left-handed coordinate system)
+        FVector3f Normal = FVector3f::CrossProduct(V2World - V0World, V1World - V0World).GetSafeNormal();
 
         // Compute triangle bounds in voxel space for intersection efficiency
         FIntVector MaxGridBound{};
@@ -482,13 +547,17 @@ void VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& Norma
 
                     if (TriangleAABBTest(V0World, V1World, V2World, VoxelCenter, VoxelHalfSize))
                     {
-                        VoxelGridBuffer[X + Y * GridDim.X + Z * GridDim.X * GridDim.Y] = 1;
+                        float CenterToSurfaceDistance = FVector3f::DotProduct(Normal, (VoxelCenter - V0World));
+                        int32 Index = X + Y * GridDim.X + Z * GridDim.X * GridDim.Y;
+                        VoxelGridBuffer[Index] = 1;
+                        VoxelGridNormalBuffer[Index] = FVector4f(Normal, CenterToSurfaceDistance);
+                        VoxelGridVelocityBuffer[Index] = ConstantVelocity;
                         WrittenVoxels++;
                     }
                 }
             }
         }
     }
-    UE_LOG(LogVoxelization, Display, TEXT("VoxelizeMesh_Host: Finished, Voxelizd %d triangles into %d voxels"), IB.GetNumIndices() / 3 - 1, WrittenVoxels);
+    UE_LOG(LogVoxelization, Display, TEXT("VoxelizeMesh_Host: Finished, Voxelized %d triangles into %d voxels"), IB.GetNumIndices() / 3 - 1, WrittenVoxels);
 
 }
