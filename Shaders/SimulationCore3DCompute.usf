@@ -877,7 +877,6 @@ float HOME_ReconstructFi_3D(
         + H3_yyz * (m_.yy * u.z + 2.0 * m_.yz * u.y - 2.0 * u.y * u.y * u.z)
         + H3_xyz * (m_.zx * u.y + m_.yz * u.x + m_.xy * u.z - 2.0 * u.x * u.y * u.z);
 
-    // ---- ƴ�� fi ----
     float poly =
           1.0
         + 3.0 * cu
