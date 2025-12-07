@@ -545,7 +545,7 @@ void StoreBoundaryInfo3D(in int texelX, in int texelY, in int texelZ, in int bou
 
 }
 
-#define INIT_VELO 0.05
+#define INIT_VELO 0.2
 #define MAX_VELO 0.3
 
 [numthreads(BLOCK_DIM_X, BLOCK_DIM_Y, BLOCK_DIM_Z)]
@@ -593,15 +593,15 @@ void LBM_MR_InitialState3D(
     // inside solid boundary
     float3 center = float3(42., 128., 128.);
     float radius = 20;
-    float d = sphere3D(float3(texelX, texelY, texelZ), center, radius);
+    /*float d = sphere3D(float3(texelX, texelY, texelZ), center, radius);
     if (d < 0.)
     {
         boundary = 4;
         normal = normalize(float3(texelX, texelY, texelZ) - center);
         StoreBoundaryInfo3D(texelX, texelY, texelZ, boundary, normal, 0.);
-    }
+    }*/
     
-    /*if (texelX >= center.x - radius && texelX <= center.x+radius &&
+    if (texelX >= center.x - radius && texelX <= center.x+radius &&
         texelY >= center.y - radius && texelY <= center.y + radius &&
         texelZ >= center.z - radius && texelZ <= center.z + radius)
     {
@@ -620,7 +620,7 @@ void LBM_MR_InitialState3D(
             normal = float3(0., 0., 1.);
         }
         StoreBoundaryInfo3D(texelX, texelY, texelZ, boundary, normal, 0.);
-    }*/
+    }
     
     if (texelX == 0)
     {
@@ -893,6 +893,22 @@ float HOME_ReconstructFi_3D(
     in float3 ci,
     in float wi)
 {
+    rho = max(rho, 1e-8);
+    if (length(u) > 0.3)
+    {
+        u = 0.3 * normalize(u);
+    }
+    // work around clamping m
+    // for diagonal elements
+    m_.xx = clamp(m_.xx, -0.25, 0.25);
+    m_.yy = clamp(m_.yy, -0.25, 0.25);
+    m_.zz = clamp(m_.zz, -0.25, 0.25);
+
+    // for off-diagonal elements
+    m_.xy = clamp(m_.xy, -0.08, 0.08);
+    m_.zx = clamp(m_.zx, -0.08, 0.08);
+    m_.yz = clamp(m_.yz, -0.08, 0.08);
+    
     // 1st order
     float cu = ci.x * u.x + ci.y * u.y + ci.z * u.z;
 
@@ -938,13 +954,20 @@ float HOME_ReconstructFi_3D(
 void ApplySpecularOnMoment(Moment_ m, float rho, float3 u, float3 n, out float3 u_out, out Moment_ m_out)
 {
     // 保证 n 是单位向量
+    float nlen = length(n);
+    if (nlen < 1e-6)
+    {
+        // fallback: 不做反射，返回原值
+        u_out = u;
+        m_out = m;
+        return;
+    }
     n = normalize(n);
-
     // -------- 1. 速度向量做镜面反射 --------
     // u' = u - 2 (u·n) n
     float dotUN = dot(u, n);
     float3 u_reflected = u - 2.0 * dotUN * n;
-
+    
     // -------- 2. 构造反射矩阵 R = I - 2 n n^T --------
     float3x3 R =
     {
@@ -1258,7 +1281,7 @@ void LBM_HOME_Streaming_Collision3D(
                 }
                 else if (boundary == 4) // free-slip
                 {
-                    float3 normal = normalize(c[i]);
+                    float3 normal = float3(1., 0., 0.);
                     float dist;
                     int _;
                     ReadBoundaryInfo3D(texelX - c_i.x, texelY - c_i.y, texelZ - c_i.z, _, normal, dist);
@@ -1267,6 +1290,10 @@ void LBM_HOME_Streaming_Collision3D(
                     ApplySpecularOnMoment(m_, rho, u_, normal, u_boundary, m_boundary);
                 }
                 f[i] = HOME_ReconstructFi_3D(rho, u_boundary, m_boundary, c[i], w[i]);
+            }
+            if (isnan(f[i]))
+            {
+                f[i] = 0.0001;
             }
         }
     
@@ -1288,6 +1315,7 @@ void LBM_HOME_Streaming_Collision3D(
             m_star.yz += (c[i].y * c[i].z) * f[i];
             m_star.zx += (c[i].z * c[i].x) * f[i];
         }
+        rho = max(rho, 0.00001);
         u_star /= rho;
         m_star.xx /= rho;
         m_star.yy /= rho;
@@ -1341,11 +1369,6 @@ void LBM_HOME_Streaming_Collision3D(
     if (boundary==0 || boundary==3)
     {
         StoreMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u_, m_, boundary);
-    }
-    float g = 0.;
-    if (boundary > 0)
-    {
-        g = 1.;
     }
     DebugTexture3D[uint3(texelX, texelY, texelZ)] = float4(u_, rho);
     if (texelZ == DEBUG_TEXTURE_SLICE) {
