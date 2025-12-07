@@ -20,6 +20,9 @@ public:
 
     UPROPERTY(EditAnywhere, Category = "Voxel")
     TArray<AStaticMeshActor*> ImmovableMeshes;
+    UPROPERTY(EditAnywhere, Category = "Voxel")
+    TArray<AActor*> ImmovableActors;
+
 
     UVoxelGridVisualizationComponent* VoxelMeshVisualization;
 

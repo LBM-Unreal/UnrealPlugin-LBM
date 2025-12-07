@@ -78,5 +78,8 @@ TArray<ULandscapeComponent*> GetOverlappingLandscapeComponents(ALandscape* Lands
 
 void VOXELIZATION_API VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& VoxelGridNormalBuffer, TArray<FVector3f>& VoxelGridVelocityBuffer,
 	const AStaticMeshActor* MeshActor, FVector3f Origin, FIntVector GridDim, float VoxelSize = 1.0f, FVector3f ConstantVelocity = FVector3f(0));
+
+void VOXELIZATION_API VoxelizeActorSubMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& VoxelGridNormalBuffer, TArray<FVector3f>& VoxelGridVelocityBuffer,
+	const AActor* Actor, FVector3f Origin, FIntVector GridDim, float VoxelSize = 1.0f, FVector3f ConstantVelocity = FVector3f(0));
 #pragma endregion CPU Voxelization
 

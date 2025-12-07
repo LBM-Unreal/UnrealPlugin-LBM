@@ -317,12 +317,12 @@ public:
 
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor"), Category = "LBM Sim")
-	static SIMULATIONBP_API void VoxelizeActor(AStaticMeshActor* SMActor, FVector3f Origin, FVector3f GridDim, float VoxelSize)
+	static SIMULATIONBP_API void VoxelizeActor(AActor* Actor, FVector3f Origin, FVector3f GridDim, float VoxelSize)
 	{
 		TArray<uint32> VoxelGridBuffer{};
 		TArray<FVector4f> VoxelNormalBuffer{};
 		TArray<FVector3f> VoxelVelocityBuffer{};
-		VoxelizeMesh_Host(VoxelGridBuffer, VoxelNormalBuffer, VoxelVelocityBuffer, SMActor, Origin, FIntVector(GridDim), VoxelSize);
+		VoxelizeActorSubMesh_Host(VoxelGridBuffer, VoxelNormalBuffer, VoxelVelocityBuffer, Actor, Origin, FIntVector(GridDim), VoxelSize);
 
 
 		auto* VoxelGridResource = FVoxelGridResource::Get();

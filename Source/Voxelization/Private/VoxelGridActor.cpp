@@ -30,10 +30,12 @@ void AVoxelGridActor::FillImmovableVoxelGrid()
 
 	VoxelGrid.ClearGridImmovable();
 
-	for (const auto& meshActor : ImmovableMeshes)
+	for (const auto& Actor : ImmovableActors)
 	{
-		VoxelizeMesh_Host(VoxelGrid.ImmovableMeshOccupancy, VoxelGrid.ImmovableMeshNormal, VoxelGrid.ImmovableMeshVelocity, 
-			meshActor, VoxelGrid.Origin, VoxelGrid.GridDim, VoxelGrid.VoxelSize);
+		/*VoxelizeMesh_Host(VoxelGrid.ImmovableMeshOccupancy, VoxelGrid.ImmovableMeshNormal, VoxelGrid.ImmovableMeshVelocity,
+			meshActor, VoxelGrid.Origin, VoxelGrid.GridDim, VoxelGrid.VoxelSize);*/
+		VoxelizeActorSubMesh_Host(VoxelGrid.ImmovableMeshOccupancy, VoxelGrid.ImmovableMeshNormal, VoxelGrid.ImmovableMeshVelocity,
+			Actor, VoxelGrid.Origin, VoxelGrid.GridDim, VoxelGrid.VoxelSize);
 	}
 
 	// Copy to GPU buffer

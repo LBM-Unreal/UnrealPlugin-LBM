@@ -561,3 +561,135 @@ void VoxelizeMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& Voxel
     UE_LOG(LogVoxelization, Display, TEXT("VoxelizeMesh_Host: Finished, Voxelized %d triangles into %d voxels"), IB.GetNumIndices() / 3 - 1, WrittenVoxels);
 
 }
+
+
+void VOXELIZATION_API VoxelizeActorSubMesh_Host(TArray<uint32>& VoxelGridBuffer, TArray<FVector4f>& VoxelGridNormalBuffer, TArray<FVector3f>& VoxelGridVelocityBuffer,
+    const AActor* Actor, FVector3f Origin, FIntVector GridDim, float VoxelSize, FVector3f ConstantVelocity)
+{
+    // Validate 
+    if (!Actor)
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("VoxelizeActorSubMesh_Host: Invalid Actor"));
+        return;
+    }
+
+    if (VoxelSize <= 0)
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("VoxelizeActorSubMesh_Host: invalid voxel size, got %f"), VoxelSize);
+        return;
+    }
+
+    if (GridDim.X <= 0 || GridDim.Y <= 0 || GridDim.Z <= 0)
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("VoxelizeActorSubMesh_Host: invalid GridDim, got [%d, %d, %d]."), GridDim.X, GridDim.Y, GridDim.Z);
+        return;
+    }
+
+    const int32 BufferLength = GridDim.X * GridDim.Y * GridDim.Z;
+    if (VoxelGridBuffer.Num() != BufferLength || VoxelGridNormalBuffer.Num() != BufferLength || VoxelGridVelocityBuffer.Num() != BufferLength)
+    {
+        UE_LOG(LogVoxelization, Warning, TEXT("VoxelizeActorSubMesh_Host: Buffer size mismatch. Expected %d, got VoxelBuffer[%d], NormalBuffer[%d], VelocityBuffer[%d]"),
+            BufferLength, VoxelGridBuffer.Num(), VoxelGridNormalBuffer.Num(), VoxelGridVelocityBuffer.Num());
+        VoxelGridBuffer.SetNum(BufferLength);
+        VoxelGridNormalBuffer.SetNum(BufferLength);
+        VoxelGridVelocityBuffer.SetNum(BufferLength);
+    }
+
+    // Collect static mesh components
+    auto Components = Actor->GetComponents();
+    TArray<UStaticMeshComponent*> SMComponents;
+    for (UActorComponent* Comp : Components.Array())
+    {
+    	UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Comp);
+        if (SMC)
+        {
+            SMComponents.Add(SMC);
+        }
+    }
+
+    // Voxelize
+    int WrittenVoxels = 0;
+    int NumTriangles = 0;
+    for (const UStaticMeshComponent* SMC : SMComponents)
+    {
+        UStaticMesh* Mesh = SMC->GetStaticMesh();
+
+        if (!Mesh || !Mesh->GetRenderData() || Mesh->GetRenderData()->LODResources.Num() == 0)
+        {
+            // Mesh->GetRenderData()->IsInitialized(); ?
+            UE_LOG(LogVoxelization, Warning, TEXT("VoxelizeActorSubMesh_Host: Invalid mesh"));
+            continue;
+        }
+
+        // Extract raw positions
+        const FStaticMeshLODResources& LOD = Mesh->GetRenderData()->LODResources[0];
+        const FPositionVertexBuffer& VB = LOD.VertexBuffers.PositionVertexBuffer;
+        const FRawStaticIndexBuffer& IB = LOD.IndexBuffer;
+
+        const FTransform LocalToWorld = SMC->GetComponentTransform();
+
+        // Voxelize
+        for (int32 I = 0; I < IB.GetNumIndices(); I += 3)
+        {
+            FVector3f V0Local = VB.VertexPosition(IB.GetIndex(I + 0));
+            FVector3f V1Local = VB.VertexPosition(IB.GetIndex(I + 1));
+            FVector3f V2Local = VB.VertexPosition(IB.GetIndex(I + 2));
+
+            FVector3f V0World = FVector3f(LocalToWorld.TransformPosition(FVector(V0Local)));
+            FVector3f V1World = FVector3f(LocalToWorld.TransformPosition(FVector(V1Local)));
+            FVector3f V2World = FVector3f(LocalToWorld.TransformPosition(FVector(V2Local)));
+
+            // Transform to voxel space (0..GridSize)
+            FVector3f V0VoxelSpace = (V0World - Origin) / VoxelSize;
+            FVector3f V1VoxelSpace = (V1World - Origin) / VoxelSize;
+            FVector3f V2VoxelSpace = (V2World - Origin) / VoxelSize;
+
+            // Calculate triangel normal for voxel normal buffer (use clockwise order for UE's left-handed coordinate system)
+            FVector3f Normal = FVector3f::CrossProduct(V2World - V0World, V1World - V0World).GetSafeNormal();
+
+            // Compute triangle bounds in voxel space for intersection efficiency
+            FIntVector MaxGridBound{};
+            FIntVector MinGridBound{};
+
+            FVector3f MinV = FVector3f::Min3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
+            FVector3f MaxV = FVector3f::Max3(V0VoxelSpace, V1VoxelSpace, V2VoxelSpace);
+
+            MinGridBound.X = FMath::Clamp(FMath::FloorToInt(MinV.X), 0, GridDim.X - 1);
+            MinGridBound.Y = FMath::Clamp(FMath::FloorToInt(MinV.Y), 0, GridDim.Y - 1);
+            MinGridBound.Z = FMath::Clamp(FMath::FloorToInt(MinV.Z), 0, GridDim.Z - 1);
+
+            MaxGridBound.X = FMath::Clamp(FMath::FloorToInt(MaxV.X), 0, GridDim.X - 1);
+            MaxGridBound.Y = FMath::Clamp(FMath::FloorToInt(MaxV.Y), 0, GridDim.Y - 1);
+            MaxGridBound.Z = FMath::Clamp(FMath::FloorToInt(MaxV.Z), 0, GridDim.Z - 1);
+
+            // Naively traverse the voxel bounds and test intersection
+            for (int Z = MinGridBound.Z; Z <= MaxGridBound.Z; ++Z)
+            {
+                for (int Y = MinGridBound.Y; Y <= MaxGridBound.Y; ++Y)
+                {
+                    for (int X = MinGridBound.X; X <= MaxGridBound.X; ++X)
+                    {
+                        const FVector3f VoxelHalfSize = FVector3f(VoxelSize * 0.5f);
+                        FVector3f VoxelCenter = Origin + VoxelSize * FVector3f(X, Y, Z) + VoxelHalfSize;
+
+                        if (TriangleAABBTest(V0World, V1World, V2World, VoxelCenter, VoxelHalfSize))
+                        {
+                            float CenterToSurfaceDistance = FVector3f::DotProduct(Normal, (VoxelCenter - V0World));
+                            int32 Index = X + Y * GridDim.X + Z * GridDim.X * GridDim.Y;
+
+                            if (VoxelGridBuffer[Index]) {continue;}
+
+                            VoxelGridBuffer[Index] = 1;
+                            VoxelGridNormalBuffer[Index] = FVector4f(Normal, CenterToSurfaceDistance);
+                            VoxelGridVelocityBuffer[Index] = ConstantVelocity;
+                            WrittenVoxels++;
+                        }
+                    }
+                }
+            }
+        }
+        NumTriangles += IB.GetNumIndices() / 3;
+    }
+
+    UE_LOG(LogVoxelization, Display, TEXT("VoxelizeActorSubMesh_Host: Finished, Voxelized %d triangles into %d voxels"), NumTriangles, WrittenVoxels);
+}
