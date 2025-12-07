@@ -43,6 +43,7 @@ void UVoxelGridVisualizationComponent::UpdateVisualization(const FVoxelGrid& Vox
 
     // Visualize mesh
     TArray<FVector> Vertices{};
+    TArray<FColor> VertexColors{};
     TArray<int32> Triangles{};
 
     const FVector Origin(VoxelGrid.Origin);
@@ -68,13 +69,18 @@ void UVoxelGridVisualizationComponent::UpdateVisualization(const FVoxelGrid& Vox
     };
 
     // Helper function to add a quad face
-    auto AddQuad = [&](const FVector& V0, const FVector& V1, const FVector& V2, const FVector& V3)
+    auto AddQuad = [&](const FVector& V0, const FVector& V1, const FVector& V2, const FVector& V3, const FColor& Color)
     {
         int32 vStart = Vertices.Num();
         Vertices.Add(V0);
         Vertices.Add(V1);
         Vertices.Add(V2);
         Vertices.Add(V3);
+
+        VertexColors.Add(Color);
+        VertexColors.Add(Color);
+        VertexColors.Add(Color);
+        VertexColors.Add(Color);
         
         // Add two triangles for the quad (counter-clockwise winding)
         Triangles.Add(vStart + 0);
@@ -111,48 +117,51 @@ void UVoxelGridVisualizationComponent::UpdateVisualization(const FVoxelGrid& Vox
                 FVector V111 = BasePos + FVector(1, 1, 1) * Step;
                 FVector V011 = BasePos + FVector(0, 1, 1) * Step;
 
-                // Only add faces that are exposed (no solid neighbor)
-                
+                FVector4f TriangleNormal = VoxelGrid.ImmovableMeshNormal[idx];
+                FColor FVertexColor = FColor(FMath::Max(0, TriangleNormal.X) * 255, 
+                    FMath::Max(0, TriangleNormal.Y) * 255,
+                    FMath::Max(0, TriangleNormal.Z) * 255);
+            	// Only add faces that are exposed (no solid neighbor)
                 // Front face (+Y direction)
                 if (!IsVoxelSolid(X, Y + 1, Z))
                 {
-                    AddQuad(V010, V110, V111, V011);
+                    AddQuad(V010, V110, V111, V011, FVertexColor);
                 }
 
                 // Back face (-Y direction)
                 if (!IsVoxelSolid(X, Y - 1, Z))
                 {
-                    AddQuad(V100, V000, V001, V101);
+                    AddQuad(V100, V000, V001, V101, FVertexColor);
                 }
 
                 // Right face (+X direction)
                 if (!IsVoxelSolid(X + 1, Y, Z))
                 {
-                    AddQuad(V110, V100, V101, V111);
+                    AddQuad(V110, V100, V101, V111, FVertexColor);
                 }
 
                 // Left face (-X direction)
                 if (!IsVoxelSolid(X - 1, Y, Z))
                 {
-                    AddQuad(V000, V010, V011, V001);
+                    AddQuad(V000, V010, V011, V001, FVertexColor);
                 }
 
                 // Top face (+Z direction)
                 if (!IsVoxelSolid(X, Y, Z + 1))
                 {
-                    AddQuad(V011, V111, V101, V001);
+                    AddQuad(V011, V111, V101, V001, FVertexColor);
                 }
 
                 // Bottom face (-Z direction)
                 if (!IsVoxelSolid(X, Y, Z - 1))
                 {
-                    AddQuad(V000, V100, V110, V010);
+                    AddQuad(V000, V100, V110, V010, FVertexColor);
                 }
 
                 WrittenVoxels++;
             }
         }
     }
-    ProceduralMesh->CreateMeshSection(0, Vertices, Triangles, {}, {}, {}, {}, false);
+    ProceduralMesh->CreateMeshSection(0, Vertices, Triangles, {}, {}, VertexColors, {}, false);
     UE_LOG(LogVoxelization, Display, TEXT("VoxelGridVisualizationComponent::UpdateVisualization: Mesh generated with %d voxels"), WrittenVoxels);
 }
