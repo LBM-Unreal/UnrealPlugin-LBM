@@ -1167,7 +1167,7 @@ void LBM_HOME_Streaming_Collision3D(
     int boundary = 0;
     
     // compute distribution functions from moments
-    float f[19];
+    //float f[19];
     float cs = 1. / sqrt(3.);
     
     /*uint3 block_dim = uint3(block_x_dim, block_y_dim, block_z_dim);
@@ -1183,47 +1183,35 @@ void LBM_HOME_Streaming_Collision3D(
     }*/
     
     ReadMomentRepSimulationData3D(texelX, texelY, texelZ, rho, u_, m_, boundary);
-    for (int i = 0; i < 19; i++)
-    {
-        uint3 StreamFrom = uint3(texelX, texelY, texelZ) - c[i].xyz;
-        
-        float rho2;
-        float3 u_2;
-        Moment_ m_2;
-        int boundary2 = 0;
-        ReadMomentRepSimulationData3D(StreamFrom.x, StreamFrom.y, StreamFrom.z, rho2, u_2, m_2, boundary2);
-        if (boundary2 > 0)
-        {
-            f[i] = -boundary2;
-        }
-        else
-        {
-            f[i] = HOME_ReconstructFi_3D(rho2, u_2, m_2, c[i], w[i]);
-        }
-        
-    }
-    
     
     if (boundary == 0)
     {
     // STAGE 2 -- stream the group shared data and convert back to moments
+        float rho_star = 0.;
+        float3 u_star = float3(0., 0., 0.);
+        Moment_ m_star = (Moment_) 0.;
+        float f_i;
         for (int i = 0; i < 19; i++)
         {
             int3 c_i = int3((int) c[i].x, (int) c[i].y, (int) c[i].z);
-        //LoadSharedIndex(tid.x + 1 - c_i.x, tid.y + 1 - c_i.y, tid.z + 1 - c_i.z, i, f[i]);
-            if (f[i] < 0.) // neighbor is boundary
+            uint3 StreamFrom = uint3(texelX, texelY, texelZ) - c[i].xyz;
+        
+            float rho2;
+            float3 u_2;
+            Moment_ m_2;
+            int boundary2 = 0;
+            ReadMomentRepSimulationData3D(StreamFrom.x, StreamFrom.y, StreamFrom.z, rho2, u_2, m_2, boundary2);
+            f_i = HOME_ReconstructFi_3D(rho2, u_2, m_2, c[i], w[i]);
+            if (boundary2 > 0) // neighbor is boundary
             {
-        // boundary
-                int boundary = -f[i];
-            
                 Moment_ m_boundary;
             // use rho for boundary, calculate u
                 float3 u_boundary = float3(0., 0., 0.);
-                if (boundary == 1)
+                if (boundary2 == 1)
                 {
                     m_boundary = m_;
                 }
-                if (boundary == 2)
+                if (boundary2 == 2)
                 {
                     u_boundary = float3(INIT_VELO, 0., 0.);
                     m_boundary.xx = u_boundary.x * u_boundary.x + (m_.xx - u_.x * u_.x);
@@ -1233,12 +1221,12 @@ void LBM_HOME_Streaming_Collision3D(
                     m_boundary.yz = u_boundary.y * u_boundary.z + (m_.yz - u_.y * u_.z);
                     m_boundary.zz = u_boundary.z * u_boundary.z + (m_.zz - u_.z * u_.z);
                 }
-                if (boundary == 3) // outlet or do-nothing boundary
+                if (boundary2 == 3) // outlet or do-nothing boundary
                 {
                     u_boundary = u_;
                     m_boundary = m_;
                 }
-                else if (boundary == 4) // free-slip
+                else if (boundary2 == 4) // free-slip
                 {
                     float3 normal = float3(1., 0., 0.);
                     float dist;
@@ -1248,21 +1236,27 @@ void LBM_HOME_Streaming_Collision3D(
                 //u_boundary = u_ - normalize(normal) * dot(normal, u_); // use normal to do free slip
                     ApplySpecularOnMoment(m_, rho, u_, normal, u_boundary, m_boundary);
                 }
-                f[i] = HOME_ReconstructFi_3D(rho, u_boundary, m_boundary, c[i], w[i]);
+                f_i = HOME_ReconstructFi_3D(rho, u_boundary, m_boundary, c[i], w[i]);
             }
-            if (isnan(f[i]))
+            if (isnan(f_i))
             {
-                f[i] = 0.0001;
+                f_i = 0.0001;
             }
+            
+            rho_star += f_i;
+            u_star += c[i] * f_i;
+            m_star.xx += (c[i].x * c[i].x - 1. / 3.) * f_i;
+            m_star.yy += (c[i].y * c[i].y - 1. / 3.) * f_i;
+            m_star.zz += (c[i].z * c[i].z - 1. / 3.) * f_i;
+            m_star.xy += (c[i].x * c[i].y) * f_i;
+            m_star.yz += (c[i].y * c[i].z) * f_i;
+            m_star.zx += (c[i].z * c[i].x) * f_i;
         }
-    
     
     // STAGE 3 -- collide and write back the moments to global memory
     // compute moments from distribution functions
     // reconstruct
-        rho = 0.; // rho = rho_star
-        float3 u_star = float3(0., 0., 0.);
-        Moment_ m_star = (Moment_) 0.;
+        /*rho = 0.; // rho = rho_star
         for (int i = 0; i < 19; i++)
         {
             rho += f[i];
@@ -1273,7 +1267,8 @@ void LBM_HOME_Streaming_Collision3D(
             m_star.xy += (c[i].x * c[i].y) * f[i];
             m_star.yz += (c[i].y * c[i].z) * f[i];
             m_star.zx += (c[i].z * c[i].x) * f[i];
-        }
+        }*/
+        rho = rho_star;
         rho = max(rho, 0.00001);
         u_star /= rho;
         m_star.xx /= rho;

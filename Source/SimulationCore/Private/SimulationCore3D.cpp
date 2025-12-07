@@ -231,6 +231,11 @@ void DispatchLBMMRInitialState3D_RenderThread(FRHICommandList& RHICmdList, FSimu
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
+		for (int i = 0; i < 19; ++i)
+		{
+			Parameters.c[i] = FIntVector4(Resource->c[i], 0);
+			Parameters.w[i][0] = Resource->w[i];
+		}
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
@@ -251,6 +256,11 @@ void DispatchLBMMRStreamingCollision3D_RenderThread(FRHICommandList& RHICmdList,
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
+		for (int i = 0; i < 19; ++i)
+		{
+			Parameters.c[i] = FIntVector4(Resource->c[i], 0);
+			Parameters.w[i][0] = Resource->w[i];
+		}
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);
@@ -271,6 +281,11 @@ void DispatchLBMHOMEStreamingCollision3D_RenderThread(FRHICommandList& RHICmdLis
 		Parameters.DebugTexture = Resource->DebugTextureUAV;
 		Parameters.DebugTexture3D = Resource->DebugTexture3DUAV;
 		Parameters.DebugBuffer = Resource->DebugBuffer.UAV;
+		for (int i = 0; i < 19; ++i)
+		{
+			Parameters.c[i] = FIntVector4(Resource->c[i], 0);
+			Parameters.w[i][0] = Resource->w[i];
+		}
 		SetShaderParameters(RHICmdList, Shader, Shader.GetComputeShader(), Parameters);
 	}
 	DispatchComputeShader(RHICmdList, Shader.GetShader(), ThreadGroupX, ThreadGroupY, ThreadGroupZ);

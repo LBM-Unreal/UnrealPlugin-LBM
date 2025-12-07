@@ -295,9 +295,9 @@ public:
 			{
 				FSimulationShaderResource3D::Get()->Params.DebugTextureSlice = debugTextureSlice;
 				DispatchLBMHOMEStreamingCollision3D_RenderThread(RHICmdList, FSimulationShaderResource3D::Get(),
-					FSimulationShaderResource3D::Get()->TextureSize[0] / 4 - 1,
-					FSimulationShaderResource3D::Get()->TextureSize[1] / 4 - 1,
-					FSimulationShaderResource3D::Get()->TextureSize[2] / 4 - 1); // margin the last row/col of cells
+					FSimulationShaderResource3D::Get()->TextureSize[0] / 8,
+					FSimulationShaderResource3D::Get()->TextureSize[1] / 8,
+					FSimulationShaderResource3D::Get()->TextureSize[2] / 8); // margin the last row/col of cells
 			});
 		FlushRenderingCommands();
 	}
