@@ -109,19 +109,19 @@ void FSimulationShaderResource3D::InitRHI(FRHICommandListBase& RHICmdList)
 		.SetFlags(ETextureCreateFlags::UAV).SetClearValue(FClearValueBinding(FLinearColor(0.f, 0.f, 0.f, 0.f)));
 	DebugTexture = RHICmdList.CreateTexture(Desc.SetDebugName(TEXT("LBM_DebugTexture")));
 
-	FRHITextureCreateDesc Desc3D =
+	/*FRHITextureCreateDesc Desc3D =
 		FRHITextureCreateDesc::Create3D(TEXT("LBM_Textures"), TextureSize[0], TextureSize[1], TextureSize[2], PF_FloatRGBA)
 		.SetFlags(ETextureCreateFlags::UAV).SetClearValue(FClearValueBinding(FLinearColor(0.f, 0.f, 0.f, 0.f)));
-	DebugTexture3D = RHICmdList.CreateTexture(Desc3D.SetDebugName(TEXT("LBM_DebugTexture3D")));
+	DebugTexture3D = RHICmdList.CreateTexture(Desc3D.SetDebugName(TEXT("LBM_DebugTexture3D")));*/
 
 	DebugTextureUAV = RHICmdList.CreateUnorderedAccessView(DebugTexture, FRHIViewDesc::CreateTextureUAV()
 		.SetDimensionFromTexture(DebugTexture)
 		.SetMipLevel(0)
 		.SetArrayRange(0, 1));
-	DebugTexture3DUAV = RHICmdList.CreateUnorderedAccessView(DebugTexture3D, FRHIViewDesc::CreateTextureUAV()
+	/*DebugTexture3DUAV = RHICmdList.CreateUnorderedAccessView(DebugTexture3D, FRHIViewDesc::CreateTextureUAV()
 		.SetDimensionFromTexture(DebugTexture3D)
 		.SetMipLevel(0)
-		.SetArrayRange(0, 1));
+		.SetArrayRange(0, 1));*/
 	DebugBuffer.Initialize(RHICmdList, TEXT("LBM_DebugBuffer"), sizeof(int), (TextureSize[0]+4) * (TextureSize[1]+4) * (TextureSize[2]+4) * 20);
 }
 

@@ -191,7 +191,7 @@ public:
 			});
 		FlushRenderingCommands();
 	}
-
+	/*
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Debug Texture 3D Value 3D"), Category = "LBM Sim")
 	static SIMULATIONBP_API void GetDebugTexture3DValue3D(UTexture* OutTexture)
 	{
@@ -209,15 +209,22 @@ public:
 				RHICmdList.CopyTexture(srcRHI, dstRHI, CopyInfo);
 			});
 		FlushRenderingCommands();
-	}
+	}*/
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Update Resource 3D"), Category = "LBM Sim")
-	static SIMULATIONBP_API void UpdateResource3D(FVector3f TextureSize) {
-		ENQUEUE_RENDER_COMMAND(FUpdateResource)([TextureSize](FRHICommandListImmediate& RHICmdList)
+	static SIMULATIONBP_API void UpdateResource3D(FVector3f TextureSize, UTexture* Tex3D) {
+		ENQUEUE_RENDER_COMMAND(FUpdateResource)([TextureSize, Tex3D](FRHICommandListImmediate& RHICmdList)
 			{
 				FSimulationShaderResource3D::Get()->TextureSize = FIntVector3(TextureSize);
 				FSimulationShaderResource3D::Get()->Params.SimDimensions = FIntVector3(TextureSize);
 				FSimulationShaderResource3D::Get()->UpdateRHI(RHICmdList);
+				FSimulationShaderResource3D::Get()->DebugTexture3DUAV = RHICmdList.CreateUnorderedAccessView(
+					Tex3D->GetResource()->GetTexture3DRHI(),
+					FRHIViewDesc::CreateTextureUAV()
+					.SetDimensionFromTexture(Tex3D->GetResource()->GetTexture3DRHI())
+					.SetMipLevel(0)
+					.SetArrayRange(0, 1)
+				);
 			});
 	}
 
