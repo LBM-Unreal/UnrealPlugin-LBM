@@ -1,0 +1,44 @@
+// UtilitiesCompute.usf
+#include "/Engine/Public/Platform.ush"
+
+#define ELEMENT_DIM 20
+
+RWStructuredBuffer<uint> CpySrcVoxelGridBuffer; 
+RWStructuredBuffer<float4> CpySrcVoxelNormalBuffer;
+RWStructuredBuffer<float3> CpySrcVoxelVelocityBuffer;
+RWStructuredBuffer<int> CpyDstDebugBuffer;
+
+int3 SimDimension;
+int3 VoxelGridDimension;
+
+uint GetCpyDstIdx(in uint texelX, in uint texelY, in uint texelZ)
+{
+    return 10 + ELEMENT_DIM * texelX + ELEMENT_DIM * SimDimension.x * texelY + ELEMENT_DIM * SimDimension.x * SimDimension.y * texelZ;
+}
+
+
+[numthreads(4, 4, 4)]
+void CpyVoxelGridToSimulation(uint3 DTid : SV_DispatchThreadID)
+{
+    if (any(DTid >= VoxelGridDimension) || 
+            any(DTid < 1) || any(DTid >= SimDimension - 5)) // prevent overwriting simulation boundary
+    {
+	    return;
+    }
+
+    uint srcIdx = DTid.x + DTid.y * VoxelGridDimension.x + DTid.z * VoxelGridDimension.x * VoxelGridDimension.y;
+    uint dstIdx = GetCpyDstIdx(DTid.x, DTid.y, DTid.z);
+
+	CpyDstDebugBuffer[dstIdx] = 4*CpySrcVoxelGridBuffer[srcIdx];  // Boundary
+
+    float4 normal = CpySrcVoxelNormalBuffer[srcIdx];
+    CpyDstDebugBuffer[dstIdx + 1] = asint(normal.x); // Normal.X
+    CpyDstDebugBuffer[dstIdx + 2] = asint(normal.y);    // Normal.Y
+    CpyDstDebugBuffer[dstIdx + 3] = asint(normal.z); // Normal.Z
+    //CpyDstDebugBuffer[dstIdx + 4] = normal.w;    // GridCenter distance to surface 
+
+    /*float3 velocity = CpySrcVoxelVelocityBuffer[srcIdx];
+    CpyDstDebugBuffer[dstIdx - 9] = velocity.x;
+    CpyDstDebugBuffer[dstIdx - 8] = velocity.y;
+    CpyDstDebugBuffer[dstIdx - 7] = velocity.z;*/
+}

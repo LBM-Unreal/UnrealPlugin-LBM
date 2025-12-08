@@ -8,6 +8,7 @@
 #include "IRenderDocPlugin.h"
 #include "Engine/Texture2DArray.h"
 #include "VoxelizationCore.h"
+#include "Engine/StaticMeshActor.h"
 
 #include "SimulationBPModule.generated.h"
 
@@ -392,10 +393,19 @@ public:
 
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Voxelize Actor GPU"), Category = "LBM Sim")
-	static SIMULATIONBP_API void VoxelizeActorGPU(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin)
+	static SIMULATIONBP_API void VoxelizeActorGPU(AStaticMeshActor* SMActor, FVector3f GridDim, FVector3f Origin, float DeltaTime)
 	{
-
 		FlushRenderingCommands();
+		int RequiredVerts = SMActor->GetStaticMeshComponent()->GetStaticMesh()->GetRenderData()->LODResources[0].GetNumVertices();
+		if (RequiredVerts != FVertexVelocityResource::Get()->GetVertexCount())
+		{
+			ENQUEUE_RENDER_COMMAND(FUpdateVelocity)([RequiredVerts](FRHICommandListImmediate& RHICmdList)
+				{
+					FVertexVelocityResource::Get()->SetVertexCount(RHICmdList, RequiredVerts);
+				});
+			FlushRenderingCommands();
+		}
+
 		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin](FRHICommandListImmediate& RHICmdList)
 			{
 				auto* VoxelGridResource = FVoxelGridResource::Get();
@@ -417,7 +427,6 @@ public:
 				// Voxelize
 				DispatchVoxelizeMesh_RenderThread(RHICmdList, VoxelGridResource, VertexVelocityResource, SMActor, Origin, FIntVector(GridDim));
 			});
-
 		FlushRenderingCommands();
 
 		ENQUEUE_RENDER_COMMAND(FUpdateVoxelData)([SMActor, GridDim, Origin](FRHICommandListImmediate& RHICmdList)

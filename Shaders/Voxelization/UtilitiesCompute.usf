@@ -38,7 +38,7 @@ void CpyVoxelGridToSimulation(uint3 DTid : SV_DispatchThreadID)
     //CpyDstDebugBuffer[dstIdx + 4] = normal.w;    // GridCenter distance to surface 
 
     /*float3 velocity = CpySrcVoxelVelocityBuffer[srcIdx];
-    CpyDstDebugBuffer[dstIdx - 9] = velocity.x;
-    CpyDstDebugBuffer[dstIdx - 8] = velocity.y;
-    CpyDstDebugBuffer[dstIdx - 7] = velocity.z;*/
+    CpyDstDebugBuffer[dstIdx - 9] = asint(velocity.x);
+    CpyDstDebugBuffer[dstIdx - 8] = asint(velocity.y);
+    CpyDstDebugBuffer[dstIdx - 7] = asint(velocity.z);*/
 }
