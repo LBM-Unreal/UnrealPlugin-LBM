@@ -1235,6 +1235,14 @@ void LBM_HOME_Streaming_Collision3D(
                 //float fluid_solid_drag = pow(length(u_), 2.);
                 //u_boundary = u_ - normalize(normal) * dot(normal, u_); // use normal to do free slip
                     ApplySpecularOnMoment(m_, rho, u_, normal, u_boundary, m_boundary);
+                    float rel_factor = 0.8;
+                    m_boundary.xx = lerp(m_.xx, m_boundary.xx, rel_factor);
+                    m_boundary.xy = lerp(m_.xy, m_boundary.xy, rel_factor);
+                    m_boundary.zx = lerp(m_.zx, m_boundary.zx, rel_factor);
+                    m_boundary.yy = lerp(m_.yy, m_boundary.yy, rel_factor);
+                    m_boundary.yz = lerp(m_.yz, m_boundary.yz, rel_factor);
+                    m_boundary.zz = lerp(m_.zz, m_boundary.zz, rel_factor);
+                    u_boundary *= rel_factor;
                 }
                 f_i = HOME_ReconstructFi_3D(rho, u_boundary, m_boundary, c[i], w[i]);
             }
