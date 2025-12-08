@@ -1288,7 +1288,7 @@ void LBM_HOME_Streaming_Collision3D(
     
     // collide using moments
         float3 F = float3(0., 0., 0.);
-        const float tau = RelaxationFactor;
+        const float tau = 0.508;
         
         u_ = u_star + 0.5 * F / rho;
         
