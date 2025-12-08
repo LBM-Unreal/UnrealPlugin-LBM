@@ -28,12 +28,41 @@ https://ppluscht.github.io/LBM/
 
 https://pastewka.github.io/Accelerators/lecture/boundary-conditions.html
 
+## Moment Based Representation
+
+HOME-LBM is a high-performance moment-based Lattice Boltzmann Method (LBM) solver designed for real-time and large-scale fluid simulation. It is built with a strong focus on GPU acceleration, numerical stability, and boundary robustness.
+
+This implementation features:
+
+- Moment-based collision and reconstruction
+- Efficient GPU compute pipeline
+- Support for multiple boundary conditions (solid, free-slip, outflow, etc.)
+- Designed for real-time graphics and interactive simulation
+
+HOME-LBM is suitable for:
+
+- Real-time fluid simulation
+- Research on GPU-based LBM
+- Physics-based visual effects
+
+The project aims to balance physical accuracy, performance, and engineering practicality.
+
+## Boundary Conditions & Mesh Voxelization
+
+HOME-LBM provides dedicated implementations for both free-slip and no-slip boundary conditions under the moment-based LBM framework. The boundary treatment is performed directly in moment space, ensuring improved numerical stability and accurate control of wall behavior.
+
+**No-slip boundary** enforces zero velocity at solid surfaces, suitable for viscous flow and closed solid containers.
+
+**Free-slip boundary** preserves tangential velocity while reflecting normal components, enabling stable simulation of inviscid or open surfaces.
+
+For complex geometries, HOME-LBM supports mesh-based voxelization to convert arbitrary triangle meshes into grid-aligned solid boundary fields. The voxelized result is seamlessly integrated into the boundary handling stage of the solver, allowing accurate fluid–solid interaction on detailed models.
+
+This design enables stable and efficient simulation of fluids interacting with both simple and highly complex solid boundaries.
+
 # Work In Progress
 
 - Two phase Flow
 - Multi-Dimensional Simulation
-- HOME-LBM representation(memory compression)
-- Realtime Boundary Extraction
 - Fluid & Gas Realistic Rendering
 
 # Project Documents
