@@ -4,6 +4,8 @@
 
 RealiFluid is an interactive, realtime LBM based fluid simulation implemented in Unreal Engine Plugin. Its goal is to provide **high-speed** and **high-resolution** fluid simulation, as well as maintaining level of accuracy. 
 
+![](./Misc/team-1.gif)
+
 ![](./Misc/Aero.gif)
 
 3D LBM aerodynamics simulation on a 256\*256\*256 grid
